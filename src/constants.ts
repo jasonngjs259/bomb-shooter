@@ -1,3 +1,5 @@
+import { LevelDataType } from "./types";
+
 export const GRENADE_LIST = [
   "red",
   "yellow",
@@ -28,9 +30,9 @@ export const PLAYER_DEFAULT_DATA = {
   },
 };
 
-export const KABOOM_LEVEL_DATA = {
-  x: 0,
-  y: 0,
+export const BOMB_SHOOTER_LEVEL_DATA: LevelDataType = {
+  x: 4,
+  y: 83,
   width: 0,
   height: 0,
   columns: 15,
@@ -40,4 +42,15 @@ export const KABOOM_LEVEL_DATA = {
   rowHeight: 34,
   radius: 20,
   tiles: [],
+};
+
+export const BOMB_SHOOTER_TILE = {
+  x: 0,
+  y: 0,
+  type: 0,
+  removed: false,
+  shift: 0,
+  velocity: 0,
+  alpha: 1,
+  processed: false,
 };
