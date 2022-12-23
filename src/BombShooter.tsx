@@ -6,7 +6,7 @@ import {
   NEIGBORS_OFFSETS,
   PLAYER_DEFAULT_DATA,
 } from "./constants";
-import { GAME_STATES, LevelDataType, TileType } from "./types";
+import { GAME_STATES, LevelDataType, PlayerDataType, TileType } from "./types";
 import {
   circleIntersection,
   degToRad,
@@ -24,14 +24,10 @@ import {
 
 const BombShooter = () => {
   const [gameStart, setGameStart] = useState<boolean>(false);
-  const [playerData, setPlayerData] = useState({ ...PLAYER_DEFAULT_DATA });
-  const [levelData, setLevelData] = useState<LevelDataType>({
-    ...BOMB_SHOOTER_LEVEL_DATA,
-  });
-  const [counter, setCounter] = useState<number>(0);
 
+  const levelData = useRef<LevelDataType>({ ...BOMB_SHOOTER_LEVEL_DATA });
+  const playerData = useRef<PlayerDataType>({ ...PLAYER_DEFAULT_DATA });
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
   const rowOffset = useRef<number>(0);
   const cluster = useRef<TileType[]>([]);
   const floatingClusters = useRef<TileType[][]>([]);
@@ -43,6 +39,14 @@ const BombShooter = () => {
   const fps = useRef<number>(0);
   const animationFrame = useRef<number>(0);
   const gameState = useRef<number>(GAME_STATES.initial);
+  // const fpsDetails = {
+  //   fps: 0,
+  //   fpsInterval: 0,
+  //   startTime: 0,
+  //   now: 0,
+  //   then: 0,
+  //   elapsed: 0,
+  // }
 
   // Draw a frame around the game
   const drawFrame = () => {
@@ -72,11 +76,26 @@ const BombShooter = () => {
     context.fill();
   };
 
+  // Draw text that is centered
+  const drawCenterText = (
+    text: string,
+    x: number,
+    y: number,
+    width: number
+  ) => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+
+    if (!context) return;
+    var textdim = context.measureText(text);
+    context.fillText(text, x + (width - textdim.width) / 2, y);
+  };
+
   const checkGameOver = () => {
     // Check for game over
-    for (let i = 0; i < levelData.columns; i++) {
+    for (let i = 0; i < levelData.current.columns; i++) {
       // Check if there are grenades in the bottom row
-      if (levelData.tiles[i][levelData.rows - 1].type !== -1) {
+      if (levelData.current.tiles[i][levelData.current.rows - 1].type !== -1) {
         // Game over
         nextGrenade();
         gameState.current = GAME_STATES.gameOver;
@@ -90,44 +109,50 @@ const BombShooter = () => {
 
   const addGrenades = () => {
     // Move the rows downwards
-    for (let i = 0; i < levelData.columns; i++) {
-      for (let j = 0; j < levelData.rows - 1; j++) {
-        levelData.tiles[i][levelData.rows - 1 - j].type =
-          levelData.tiles[i][levelData.rows - 1 - j - 1].type;
+    for (let i = 0; i < levelData.current.columns; i++) {
+      for (let j = 0; j < levelData.current.rows - 1; j++) {
+        levelData.current.tiles[i][levelData.current.rows - 1 - j].type =
+          levelData.current.tiles[i][levelData.current.rows - 1 - j - 1].type;
       }
     }
 
     // Add a new row of bubbles at the top
-    for (let i = 0; i < levelData.columns; i++) {
+    for (let i = 0; i < levelData.current.columns; i++) {
       // Add random, existing, colors
-      levelData.tiles[i][0].type = getExistingColor(GRENADE_LIST, levelData);
+      levelData.current.tiles[i][0].type = getExistingColor(
+        GRENADE_LIST,
+        levelData.current
+      );
     }
   };
 
   const nextGrenade = () => {
     // Set the current grenade
-    playerData.tileType = playerData.nextGrenade.tileType;
-    playerData.grenade.tileType = playerData.nextGrenade.tileType;
-    playerData.grenade.x = playerData.x;
-    playerData.grenade.y = playerData.y;
-    playerData.grenade.visible = true;
+    playerData.current.tileType = playerData.current.nextGrenade.tileType;
+    playerData.current.grenade.tileType =
+      playerData.current.nextGrenade.tileType;
+    playerData.current.grenade.x = playerData.current.x;
+    playerData.current.grenade.y = playerData.current.y;
+    playerData.current.grenade.visible = true;
 
     // Get a random type from the existing colors
-    let nextColor = getExistingColor(GRENADE_LIST, levelData);
+    let nextColor = getExistingColor(GRENADE_LIST, levelData.current);
 
     // Set the next grenade
-    playerData.nextGrenade.tileType = nextColor;
+    playerData.current.nextGrenade.tileType = nextColor;
   };
 
   // Snap grenade to the grid
   const snapGrenade = () => {
     // Get the grid position
-    const centerX = playerData.grenade.x + levelData.tileWidth / 2;
-    const centerY = playerData.grenade.y + levelData.tileHeight / 2;
+    const centerX =
+      playerData.current.grenade.x + levelData.current.tileWidth / 2;
+    const centerY =
+      playerData.current.grenade.y + levelData.current.tileHeight / 2;
     let gridPosition = getGridPosition(
       centerX,
       centerY,
-      levelData,
+      levelData.current,
       rowOffset.current
     );
 
@@ -136,24 +161,28 @@ const BombShooter = () => {
       gridPosition.x = 0;
     }
 
-    if (gridPosition.x >= levelData.columns) {
-      gridPosition.x = levelData.columns - 1;
+    if (gridPosition.x >= levelData.current.columns) {
+      gridPosition.x = levelData.current.columns - 1;
     }
 
     if (gridPosition.y < 0) {
       gridPosition.y = 0;
     }
 
-    if (gridPosition.y >= levelData.rows) {
-      gridPosition.y = levelData.rows - 1;
+    if (gridPosition.y >= levelData.current.rows) {
+      gridPosition.y = levelData.current.rows - 1;
     }
 
     // Check if the tile is empty
     let addTile = false;
-    if (levelData.tiles[gridPosition.x][gridPosition.y].type !== -1) {
+    if (levelData.current.tiles[gridPosition.x][gridPosition.y].type !== -1) {
       // Tile is not empty, shift the new tile downwards
-      for (let newRow = gridPosition.y + 1; newRow < levelData.rows; newRow++) {
-        if (levelData.tiles[gridPosition.x][newRow].type === -1) {
+      for (
+        let newRow = gridPosition.y + 1;
+        newRow < levelData.current.rows;
+        newRow++
+      ) {
+        if (levelData.current.tiles[gridPosition.x][newRow].type === -1) {
           gridPosition.y = newRow;
           addTile = true;
           break;
@@ -166,11 +195,11 @@ const BombShooter = () => {
     // Add the tile to the grid
     if (addTile) {
       // Hide the player grenade
-      playerData.grenade.visible = false;
+      playerData.current.grenade.visible = false;
 
       // Set the tile
-      levelData.tiles[gridPosition.x][gridPosition.y].type =
-        playerData.grenade.tileType;
+      levelData.current.tiles[gridPosition.x][gridPosition.y].type =
+        playerData.current.grenade.tileType;
 
       // Check for game over
       if (checkGameOver()) {
@@ -185,7 +214,7 @@ const BombShooter = () => {
         true,
         false,
         rowOffset.current,
-        levelData
+        levelData.current
       );
 
       if (cluster.current.length >= 3) {
@@ -218,10 +247,10 @@ const BombShooter = () => {
   // Shoot the grenade
   const shootGrenade = () => {
     // Shoot the grenade in the direction of the mouse
-    playerData.grenade.x = playerData.x;
-    playerData.grenade.y = playerData.y;
-    playerData.grenade.angle = playerData.angle;
-    playerData.grenade.tileType = playerData.tileType;
+    playerData.current.grenade.x = playerData.current.x;
+    playerData.current.grenade.y = playerData.current.y;
+    playerData.current.grenade.angle = playerData.current.angle;
+    playerData.current.grenade.tileType = playerData.current.tileType;
 
     // Set the gamestate
     gameState.current = GAME_STATES.shootGrenade;
@@ -232,43 +261,45 @@ const BombShooter = () => {
     // grenade is moving
 
     // Move the grenade in the direction of the mouse
-    playerData.grenade.x +=
+    playerData.current.grenade.x +=
       dt *
-      playerData.grenade.speed *
-      Math.cos(degToRad(playerData.grenade.angle));
-    playerData.grenade.y +=
+      playerData.current.grenade.speed *
+      Math.cos(degToRad(playerData.current.grenade.angle));
+    playerData.current.grenade.y +=
       dt *
-      playerData.grenade.speed *
+      playerData.current.grenade.speed *
       -1 *
-      Math.sin(degToRad(playerData.grenade.angle));
+      Math.sin(degToRad(playerData.current.grenade.angle));
 
     // Handle left and right collisions with the level
-    if (playerData.grenade.x <= levelData.x) {
+    if (playerData.current.grenade.x <= levelData.current.x) {
       // Left edge
-      playerData.grenade.angle = 180 - playerData.grenade.angle;
-      playerData.grenade.x = levelData.x;
+      playerData.current.grenade.angle = 180 - playerData.current.grenade.angle;
+      playerData.current.grenade.x = levelData.current.x;
     } else if (
-      playerData.grenade.x + levelData.tileWidth >=
-      levelData.x + levelData.width
+      playerData.current.grenade.x + levelData.current.tileWidth >=
+      levelData.current.x + levelData.current.width
     ) {
       // Right edge
-      playerData.grenade.angle = 180 - playerData.grenade.angle;
-      playerData.grenade.x =
-        levelData.x + levelData.width - levelData.tileWidth;
+      playerData.current.grenade.angle = 180 - playerData.current.grenade.angle;
+      playerData.current.grenade.x =
+        levelData.current.x +
+        levelData.current.width -
+        levelData.current.tileWidth;
     }
 
     // Collisions with the top of the level
-    if (playerData.grenade.y <= levelData.y) {
+    if (playerData.current.grenade.y <= levelData.current.y) {
       // Top collision
-      playerData.grenade.y = levelData.y;
+      playerData.current.grenade.y = levelData.current.y;
       snapGrenade();
       return;
     }
 
     // Collisions with other tiles
-    for (let i = 0; i < levelData.columns; i++) {
-      for (let j = 0; j < levelData.rows; j++) {
-        let tile = levelData.tiles[i][j];
+    for (let i = 0; i < levelData.current.columns; i++) {
+      for (let j = 0; j < levelData.current.rows; j++) {
+        let tile = levelData.current.tiles[i][j];
 
         // Skip empty tiles
         if (tile.type < 0) {
@@ -276,15 +307,20 @@ const BombShooter = () => {
         }
 
         // Check for intersections
-        let coord = getTileCoordinate(i, j, levelData, rowOffset.current);
+        let coord = getTileCoordinate(
+          i,
+          j,
+          levelData.current,
+          rowOffset.current
+        );
         if (
           circleIntersection(
-            playerData.grenade.x + levelData.tileWidth / 2,
-            playerData.grenade.y + levelData.tileHeight / 2,
-            levelData.radius,
-            coord.tileX + levelData.tileWidth / 2,
-            coord.tileY + levelData.tileHeight / 2,
-            levelData.radius
+            playerData.current.grenade.x + levelData.current.tileWidth / 2,
+            playerData.current.grenade.y + levelData.current.tileHeight / 2,
+            levelData.current.radius,
+            coord.tileX + levelData.current.tileWidth / 2,
+            coord.tileY + levelData.current.tileHeight / 2,
+            levelData.current.radius
           )
         ) {
           // Intersection with a level grenade
@@ -297,7 +333,7 @@ const BombShooter = () => {
 
   const stateRemoveCluster = (dt: number) => {
     if (animationState.current === 0) {
-      resetRemoved(levelData);
+      resetRemoved(levelData.current);
 
       // Mark the tiles as removed
       for (let i = 0; i < cluster.current.length; i++) {
@@ -307,7 +343,7 @@ const BombShooter = () => {
 
       // Find floating clusters
       floatingClusters.current = findFloatingClusters(
-        levelData,
+        levelData.current,
         rowOffset.current
       );
 
@@ -318,7 +354,7 @@ const BombShooter = () => {
             let tile = floatingClusters.current[i][j];
             tile.shift = 0;
             tile.shift = 1;
-            tile.velocity = playerData.grenade.dropSpeed;
+            tile.velocity = playerData.current.grenade.dropSpeed;
           }
         }
       }
@@ -369,9 +405,9 @@ const BombShooter = () => {
             // Check if the grenades are past the bottom of the level
             if (
               tile.alpha === 0 ||
-              tile.y * levelData.rowHeight + tile.shift >
-                (levelData.rows - 1) * levelData.rowHeight +
-                  levelData.tileHeight
+              tile.y * levelData.current.rowHeight + tile.shift >
+                (levelData.current.rows - 1) * levelData.current.rowHeight +
+                  levelData.current.tileHeight
             ) {
               tile.type = -1;
               tile.shift = 0;
@@ -386,17 +422,17 @@ const BombShooter = () => {
         nextGrenade();
 
         // Check for game over
-        let tilefound = false;
-        for (let i = 0; i < levelData.columns; i++) {
-          for (let j = 0; j < levelData.rows; j++) {
-            if (levelData.tiles[i][j].type !== -1) {
-              tilefound = true;
+        let tileFound = false;
+        for (let i = 0; i < levelData.current.columns; i++) {
+          for (let j = 0; j < levelData.current.rows; j++) {
+            if (levelData.current.tiles[i][j].type !== -1) {
+              tileFound = true;
               break;
             }
           }
         }
 
-        if (tilefound) {
+        if (tileFound) {
           gameState.current = GAME_STATES.ready;
           // setGameState(GAME_STATES.ready);
         } else {
@@ -419,8 +455,8 @@ const BombShooter = () => {
     // Get the mouse angle
     let mouseAngle = radToDeg(
       Math.atan2(
-        playerData.y + levelData.tileHeight / 2 - pos.y,
-        pos.x - (playerData.x + levelData.tileWidth / 2)
+        playerData.current.y + levelData.current.tileHeight / 2 - pos.y,
+        pos.x - (playerData.current.x + levelData.current.tileWidth / 2)
       )
     );
 
@@ -445,7 +481,7 @@ const BombShooter = () => {
     }
 
     // Set the player angle
-    playerData.angle = mouseAngle;
+    playerData.current.angle = mouseAngle;
   };
 
   // On mouse button click
@@ -499,16 +535,21 @@ const BombShooter = () => {
     if (!context) return;
 
     // Top to bottom
-    for (let j = 0; j < levelData.rows; j++) {
-      for (let i = 0; i < levelData.columns; i++) {
+    for (let j = 0; j < levelData.current.rows; j++) {
+      for (let i = 0; i < levelData.current.columns; i++) {
         // Get the tile
-        let tile = levelData.tiles[i][j];
+        let tile = levelData.current.tiles[i][j];
 
         // Get the shift of the tile for animation
         let shift = tile.shift;
 
         // Calculate the tile coordinates
-        let coordinate = getTileCoordinate(i, j, levelData, rowOffset.current);
+        let coordinate = getTileCoordinate(
+          i,
+          j,
+          levelData.current,
+          rowOffset.current
+        );
 
         // Check if there is a tile present
         if (tile.type >= 0) {
@@ -532,13 +573,20 @@ const BombShooter = () => {
 
     if (!context) return;
 
-    let centerX = playerData.x + levelData.tileWidth / 2;
-    let centerY = playerData.y + levelData.tileHeight / 2;
+    let centerX = playerData.current.x + levelData.current.tileWidth / 2;
+    let centerY = playerData.current.y + levelData.current.tileHeight / 2;
 
     // Draw player background circle
     context.fillStyle = "#7a7a7a";
     context.beginPath();
-    context.arc(centerX, centerY, levelData.radius + 12, 0, 2 * Math.PI, false);
+    context.arc(
+      centerX,
+      centerY,
+      levelData.current.radius + 12,
+      0,
+      2 * Math.PI,
+      false
+    );
     context.fill();
     context.lineWidth = 2;
     context.strokeStyle = "#8c8c8c";
@@ -551,31 +599,35 @@ const BombShooter = () => {
     context.moveTo(centerX, centerY);
     context.lineTo(
       centerX +
-        1.5 * levelData.tileWidth * Math.cos(degToRad(playerData.angle)),
+        1.5 *
+          levelData.current.tileWidth *
+          Math.cos(degToRad(playerData.current.angle)),
       centerY -
-        1.5 * levelData.tileHeight * Math.sin(degToRad(playerData.angle))
+        1.5 *
+          levelData.current.tileHeight *
+          Math.sin(degToRad(playerData.current.angle))
     );
     context.stroke();
 
     // Draw the next grenade
     drawGrenade(
-      playerData.nextGrenade.x,
-      playerData.nextGrenade.y,
-      playerData.nextGrenade.tileType
+      playerData.current.nextGrenade.x,
+      playerData.current.nextGrenade.y,
+      playerData.current.nextGrenade.tileType
     );
 
     // Draw the grenade
-    if (playerData.grenade.visible) {
+    if (playerData.current.grenade.visible) {
       drawGrenade(
-        playerData.grenade.x,
-        playerData.grenade.y,
-        playerData.grenade.tileType
+        playerData.current.grenade.x,
+        playerData.current.grenade.y,
+        playerData.current.grenade.tileType
       );
     }
   };
 
   // Render the game
-  const render = () => {
+  const render = (fps: number) => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
@@ -587,15 +639,15 @@ const BombShooter = () => {
     // Draw the frame around the game
     drawFrame();
 
-    let yoffset = levelData.tileHeight / 2;
+    let yoffset = levelData.current.tileHeight / 2;
 
     // Draw level background
     context.fillStyle = "#8c8c8c";
     context.fillRect(
-      levelData.x - 4,
-      levelData.y - 4,
-      levelData.width + 8,
-      levelData.height + 4 - yoffset
+      levelData.current.x - 4,
+      levelData.current.y - 4,
+      levelData.current.width + 8,
+      levelData.current.height + 4 - yoffset
     );
 
     // Render tiles
@@ -604,26 +656,55 @@ const BombShooter = () => {
     // Draw level bottom
     context.fillStyle = "#656565";
     context.fillRect(
-      levelData.x - 4,
-      levelData.y - 4 + levelData.height + 4 - yoffset,
-      levelData.width + 8,
-      2 * levelData.tileHeight + 3
+      levelData.current.x - 4,
+      levelData.current.y - 4 + levelData.current.height + 4 - yoffset,
+      levelData.current.width + 8,
+      2 * levelData.current.tileHeight + 3
     );
 
     // Render player grenade
     renderPlayer();
 
+    // Game Over overlay
+    if (gameState.current == GAME_STATES.gameOver) {
+      context.fillStyle = "rgba(0, 0, 0, 0.8)";
+      context.fillRect(
+        levelData.current.x - 4,
+        levelData.current.y - 4,
+        levelData.current.width + 8,
+        levelData.current.height +
+          2 * levelData.current.tileHeight +
+          8 -
+          yoffset
+      );
+
+      context.fillStyle = "#ffffff";
+      context.font = "24px Verdana";
+      drawCenterText(
+        "Game Over!",
+        levelData.current.x,
+        levelData.current.y + levelData.current.height / 2 + 10,
+        levelData.current.width
+      );
+      drawCenterText(
+        "Click to start",
+        levelData.current.x,
+        levelData.current.y + levelData.current.height / 2 + 40,
+        levelData.current.width
+      );
+    }
+
     animationFrame.current = window.requestAnimationFrame(render);
-    update(animationFrame.current);
+    update(fps);
   };
 
   // Create a random level
   const createLevel = () => {
     // Create a level with random tiles
-    for (let j = 0; j < levelData.rows; j++) {
+    for (let j = 0; j < levelData.current.rows; j++) {
       let randomTile = randomRange(0, GRENADE_LIST.length - 1);
       let count = 0;
-      for (let i = 0; i < levelData.columns; i++) {
+      for (let i = 0; i < levelData.current.columns; i++) {
         if (count >= 2) {
           // Change the random tile
           let newTile = randomRange(0, GRENADE_LIST.length - 1);
@@ -637,10 +718,10 @@ const BombShooter = () => {
         }
         count++;
 
-        if (j < levelData.rows / 2) {
-          levelData.tiles[i][j].type = randomTile;
+        if (j < levelData.current.rows / 2) {
+          levelData.current.tiles[i][j].type = randomTile;
         } else {
-          levelData.tiles[i][j].type = -1;
+          levelData.current.tiles[i][j].type = -1;
         }
       }
     }
@@ -683,9 +764,9 @@ const BombShooter = () => {
     if (!canvas) return;
 
     // Initialize the two-dimensional tile array
-    for (let i = 0; i < levelData.columns; i++) {
-      levelData.tiles[i] = [];
-      for (let j = 0; j < levelData.rows; j++) {
+    for (let i = 0; i < levelData.current.columns; i++) {
+      levelData.current.tiles[i] = [];
+      for (let j = 0; j < levelData.current.rows; j++) {
         // Define a tile type and a shift parameter for animation
 
         const tempTile = {
@@ -696,22 +777,28 @@ const BombShooter = () => {
           shift: 0,
         };
 
-        levelData.tiles[i].push(tempTile);
+        levelData.current.tiles[i].push(tempTile);
       }
     }
 
-    levelData.width =
-      levelData.columns * levelData.tileWidth + levelData.tileWidth / 2;
-    levelData.height =
-      (levelData.rows - 1) * levelData.rowHeight + levelData.tileHeight;
+    levelData.current.width =
+      levelData.current.columns * levelData.current.tileWidth +
+      levelData.current.tileWidth / 2;
+    levelData.current.height =
+      (levelData.current.rows - 1) * levelData.current.rowHeight +
+      levelData.current.tileHeight;
 
     // Init the player
-    playerData.x = levelData.x + levelData.width / 2 - levelData.tileWidth / 2;
-    playerData.y = levelData.y + levelData.height;
-    playerData.angle = 90;
-    playerData.tileType = 0;
-    playerData.nextGrenade.x = playerData.x - 2 * levelData.tileWidth;
-    playerData.nextGrenade.y = playerData.y;
+    playerData.current.x =
+      levelData.current.x +
+      levelData.current.width / 2 -
+      levelData.current.tileWidth / 2;
+    playerData.current.y = levelData.current.y + levelData.current.height;
+    playerData.current.angle = 90;
+    playerData.current.tileType = 0;
+    playerData.current.nextGrenade.x =
+      playerData.current.x - 2 * levelData.current.tileWidth;
+    playerData.current.nextGrenade.y = playerData.current.y;
 
     // New game
     newGame();
@@ -723,10 +810,14 @@ const BombShooter = () => {
   }, []);
 
   useEffect(() => {
-    if (gameStart) render();
+    if (gameStart) render(60);
 
     return () => window.cancelAnimationFrame(animationFrame.current);
   }, [gameStart]);
+
+  useEffect(() => {
+    animationState.current = 0;
+  }, [gameState.current]);
 
   return (
     <div className="canvasContainer">

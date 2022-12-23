@@ -30,3 +30,24 @@ export interface LevelDataType {
   radius: number;
   tiles: TileType[][];
 }
+
+export interface PlayerDataType {
+  x: number;
+  y: number;
+  angle: number;
+  tileType: number;
+  grenade: {
+    x: number;
+    y: number;
+    angle: number;
+    speed: number;
+    dropSpeed: number;
+    tileType: number;
+    visible: boolean;
+  };
+  nextGrenade: {
+    x: number;
+    y: number;
+    tileType: number;
+  };
+}
