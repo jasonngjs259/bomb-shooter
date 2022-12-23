@@ -1,7 +1,7 @@
 export enum GAME_STATES {
   initial = 0,
   ready = 1,
-  shootBubble = 2,
+  shootGrenade = 2,
   removeCluster = 3,
   gameOver = 4,
 }

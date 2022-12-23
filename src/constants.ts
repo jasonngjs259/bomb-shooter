@@ -4,7 +4,7 @@ export const GRENADE_LIST = [
   "red",
   "yellow",
   "blue",
-  "green",
+  "limegreen",
   "purple",
   "cyan",
 ];
@@ -54,3 +54,22 @@ export const BOMB_SHOOTER_TILE = {
   alpha: 1,
   processed: false,
 };
+
+export const NEIGBORS_OFFSETS = [
+  [
+    [1, 0],
+    [0, 1],
+    [-1, 1],
+    [-1, 0],
+    [-1, -1],
+    [0, -1],
+  ], // Even row tiles
+  [
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [-1, 0],
+    [0, -1],
+    [1, -1],
+  ], // Odd row tiles
+];
