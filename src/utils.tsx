@@ -1,4 +1,3 @@
-import { RefObject } from "react";
 import { NEIGBORS_OFFSETS } from "./constants";
 import { LevelDataType, TileType } from "./types";
 
@@ -201,24 +200,18 @@ export const findCluster = (
     // Pop the last element from the array
     let currentTile: TileType | undefined = toProcess.pop();
 
-    // // Skip processed and empty tiles
-    // if (currentTile && currentTile.type === -1) {
-    //   continue;
-    // }
+    // Skip processed and empty tiles
+    if (currentTile && currentTile.type === -1) {
+      continue;
+    }
 
-    // // Skip tiles with the removed flag
-    // if (currentTile && skipRemoved && currentTile.removed) {
-    //   continue;
-    // }
+    // Skip tiles with the removed flag
+    if (currentTile && skipRemoved && currentTile.removed) {
+      continue;
+    }
 
     // Check if current tile has the right type, if matchtype is true
-    if (
-      currentTile &&
-      currentTile.type !== -1 &&
-      !skipRemoved &&
-      !currentTile.removed &&
-      (!matchType || currentTile.type === targetTile.type)
-    ) {
+    if (currentTile && (!matchType || currentTile.type === targetTile.type)) {
       // Add current tile to the cluster
       foundCluster.push(currentTile);
 
@@ -248,7 +241,7 @@ export const findFloatingClusters = (
   // Reset the processed flags
   resetProcessed(levelData);
 
-  let foundclusters = [];
+  let foundClusters = [];
 
   // Check all tiles
   for (let i = 0; i < levelData.columns; i++) {
@@ -283,11 +276,13 @@ export const findFloatingClusters = (
 
         if (floating) {
           // Found a floating cluster
-          foundclusters.push(foundCluster);
+          foundClusters.push(foundCluster);
         }
       }
     }
   }
 
-  return foundclusters;
+  console.log(foundClusters);
+
+  return foundClusters;
 };

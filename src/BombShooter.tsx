@@ -48,6 +48,12 @@ const BombShooter = () => {
   //   elapsed: 0,
   // }
 
+  function setGameState(newGameState: number) {
+    gameState.current = newGameState;
+
+    animationState.current = 0;
+  }
+
   // Draw a frame around the game
   const drawFrame = () => {
     const canvas = canvasRef.current;
@@ -98,7 +104,8 @@ const BombShooter = () => {
       if (levelData.current.tiles[i][levelData.current.rows - 1].type !== -1) {
         // Game over
         nextGrenade();
-        gameState.current = GAME_STATES.gameOver;
+        setGameState(GAME_STATES.gameOver);
+        // gameState.current = GAME_STATES.gameOver;
         // setGameState(GAME_STATES.gameOver);
         return true;
       }
@@ -219,7 +226,8 @@ const BombShooter = () => {
 
       if (cluster.current.length >= 3) {
         // Remove the cluster
-        gameState.current = GAME_STATES.removeCluster;
+        setGameState(GAME_STATES.removeCluster);
+        // gameState.current = GAME_STATES.removeCluster;
         // setGameState(GAME_STATES.removeCluster);
         return;
       }
@@ -240,7 +248,8 @@ const BombShooter = () => {
 
     // Next grenade
     nextGrenade();
-    gameState.current = GAME_STATES.ready;
+    setGameState(GAME_STATES.ready);
+    // gameState.current = GAME_STATES.ready;
     // setGameState(GAME_STATES.ready);
   };
 
@@ -253,7 +262,8 @@ const BombShooter = () => {
     playerData.current.grenade.tileType = playerData.current.tileType;
 
     // Set the gamestate
-    gameState.current = GAME_STATES.shootGrenade;
+    setGameState(GAME_STATES.shootGrenade);
+    // gameState.current = GAME_STATES.shootGrenade;
     // setGameState(GAME_STATES.shootGrenade);
   };
 
@@ -332,11 +342,13 @@ const BombShooter = () => {
   };
 
   const stateRemoveCluster = (dt: number) => {
+    console.log(animationState.current);
     if (animationState.current === 0) {
       resetRemoved(levelData.current);
 
       // Mark the tiles as removed
       for (let i = 0; i < cluster.current.length; i++) {
+        console.log(true);
         // Set the removed flag
         cluster.current[i].removed = true;
       }
@@ -433,11 +445,13 @@ const BombShooter = () => {
         }
 
         if (tileFound) {
-          gameState.current = GAME_STATES.ready;
+          setGameState(GAME_STATES.ready);
+          // gameState.current = GAME_STATES.ready;
           // setGameState(GAME_STATES.ready);
         } else {
           // No tiles left, game over
-          gameState.current = GAME_STATES.gameOver;
+          setGameState(GAME_STATES.gameOver);
+          // gameState.current = GAME_STATES.gameOver;
           // setGameState(GAME_STATES.gameOver);
         }
       }
@@ -524,6 +538,7 @@ const BombShooter = () => {
       stateShootGrenade(dt);
     } else if (gameState.current === GAME_STATES.removeCluster) {
       // Remove cluster and drop tiles
+      console.log(gameState.current);
       stateRemoveCluster(dt);
     }
   };
@@ -694,8 +709,8 @@ const BombShooter = () => {
       );
     }
 
-    animationFrame.current = window.requestAnimationFrame(render);
     update(fps);
+    animationFrame.current = window.requestAnimationFrame(render);
   };
 
   // Create a random level
@@ -730,7 +745,8 @@ const BombShooter = () => {
   // Start a new game
   const newGame = () => {
     // Set the gamestate to ready
-    gameState.current = GAME_STATES.ready;
+    setGameState(GAME_STATES.ready);
+    // gameState.current = GAME_STATES.ready;
     // setGameState(GAME_STATES.ready);
 
     // Create the level
@@ -815,9 +831,9 @@ const BombShooter = () => {
     return () => window.cancelAnimationFrame(animationFrame.current);
   }, [gameStart]);
 
-  useEffect(() => {
-    animationState.current = 0;
-  }, [gameState.current]);
+  // useEffect(() => {
+  //   animationState.current = 0;
+  // }, [gameState.current]);
 
   return (
     <div className="canvasContainer">
