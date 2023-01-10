@@ -1,4 +1,4 @@
-import { NEIGBORS_OFFSETS } from "./constants";
+import { NEIGHBORS_OFFSETS } from "./constants";
 import { LevelDataType, TileType } from "./types";
 
 // Get a random int between low and high, inclusive
@@ -95,12 +95,13 @@ export const getTileCoordinate = (
   column: number,
   row: number,
   levelData: LevelDataType,
-  rowOffset: number
+  rowOffset: number,
+  isCeiling: boolean
 ) => {
   let tileX = levelData.x + column * levelData.tileWidth;
 
   // X offset for odd or even rows
-  if ((row + rowOffset) % 2) {
+  if (!isCeiling && (row + rowOffset) % 2) {
     tileX += levelData.tileWidth / 2;
   }
 
@@ -129,7 +130,7 @@ export const getGridPosition = (
 };
 
 // Get the neighbors of the specified tile
-export const getNeighbors = (
+const getNeighbors = (
   tile: TileType,
   rowOffset: number,
   levelData: LevelDataType
@@ -138,7 +139,7 @@ export const getNeighbors = (
   let neighbors = [];
 
   // Get the neighbor offsets for the specified tile
-  let n = NEIGBORS_OFFSETS[tileRow];
+  let n = NEIGHBORS_OFFSETS[tileRow];
 
   // Get the neighbors
   for (let i = 0; i < n.length; i++) {
@@ -281,8 +282,6 @@ export const findFloatingClusters = (
       }
     }
   }
-
-  console.log(foundClusters);
 
   return foundClusters;
 };

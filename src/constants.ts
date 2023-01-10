@@ -31,17 +31,18 @@ export const PLAYER_DEFAULT_DATA = {
 };
 
 export const BOMB_SHOOTER_LEVEL_DATA: LevelDataType = {
-  x: 4,
-  y: 83,
+  x: 10,
+  y: 15,
   width: 0,
   height: 0,
-  columns: 15,
-  rows: 14,
+  columns: 19,
+  rows: 9,
   tileWidth: 40,
   tileHeight: 40,
   rowHeight: 34,
   radius: 20,
   tiles: [],
+  ignoreMatchedShot: true,
 };
 
 export const BOMB_SHOOTER_TILE = {
@@ -55,7 +56,7 @@ export const BOMB_SHOOTER_TILE = {
   processed: false,
 };
 
-export const NEIGBORS_OFFSETS = [
+export const NEIGHBORS_OFFSETS = [
   [
     [1, 0],
     [0, 1],

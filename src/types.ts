@@ -29,6 +29,7 @@ export interface LevelDataType {
   rowHeight: number;
   radius: number;
   tiles: TileType[][];
+  ignoreMatchedShot: boolean;
 }
 
 export interface PlayerDataType {
