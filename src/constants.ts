@@ -42,7 +42,10 @@ export const BOMB_SHOOTER_LEVEL_DATA: LevelDataType = {
   rowHeight: 34,
   radius: 20,
   tiles: [],
-  ignoreMatchedShot: true,
+  initialItemRow: 3,
+  addRowItem: "ceiling",
+  addNewItemRowCounter: 5,
+  isTimerOn: true,
 };
 
 export const BOMB_SHOOTER_TILE = {
