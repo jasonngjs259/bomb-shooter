@@ -758,20 +758,20 @@ const BombShooter = () => {
       }
     }
 
-    for (let n = 0; n < KABOOM_LEVEL_DATA.initialEmptyTiles.length; n++) {
-      const blockedTilesAtN0 = KABOOM_LEVEL_DATA.initialEmptyTiles[n]?.[0];
-      const blockedTilesAtN1 = KABOOM_LEVEL_DATA.initialEmptyTiles[n]?.[1];
-      if (
-        blockedTilesAtN0 &&
-        blockedTilesAtN1 &&
-        i === blockedTilesAtN0 &&
-        j === blockedTilesAtN1
-      ) {
-        levelDataCurrentTilesAtIJ.type = -1;
-      } else {
-        levelDataCurrentTilesAtIJ.type = randomTile;
-      }
-    }
+    // for (let n = 0; n < KABOOM_LEVEL_DATA.initialEmptyTiles.length; n++) {
+    //   const blockedTilesAtN0 = KABOOM_LEVEL_DATA.initialEmptyTiles[n]?.[0];
+    //   const blockedTilesAtN1 = KABOOM_LEVEL_DATA.initialEmptyTiles[n]?.[1];
+    //   if (
+    //     blockedTilesAtN0 &&
+    //     blockedTilesAtN1 &&
+    //     i === blockedTilesAtN0 &&
+    //     j === blockedTilesAtN1
+    //   ) {
+    //     levelDataCurrentTilesAtIJ.type = -1;
+    //   } else {
+    //     levelDataCurrentTilesAtIJ.type = randomTile;
+    //   }
+    // }
   };
 
   // Start a new game
