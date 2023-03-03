@@ -859,7 +859,7 @@ const BombShooter = () => {
   }, []);
 
   useEffect(() => {
-    if (gameStart) render(60);
+    if (gameStart) render(0);
 
     return () => window.cancelAnimationFrame(animationFrame.current);
   }, [gameStart]);

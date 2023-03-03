@@ -45,7 +45,7 @@ export const BOMB_SHOOTER_LEVEL_DATA: LevelDataType = {
   initialItemRow: 3,
   addRowItem: "ceiling",
   addNewItemRowCounter: 5,
-  isTimerOn: true,
+  isTimerOn: false,
 };
 
 export const BOMB_SHOOTER_TILE = {
