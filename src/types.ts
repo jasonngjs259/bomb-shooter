@@ -24,8 +24,6 @@ export interface LevelDataType {
   height: number;
   columns: number;
   rows: number;
-  tileWidth: number;
-  tileHeight: number;
   rowHeight: number;
   radius: number;
   tiles: TileType[][];

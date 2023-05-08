@@ -24,6 +24,10 @@ const BombShooter = () => {
   const [gameStart, setGameStart] = useState<boolean>(false);
   const [timer, setTimer] = useState<number>(0);
 
+  const tileSize = useRef<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
   const levelData = useRef<LevelDataType>({ ...BOMB_SHOOTER_LEVEL_DATA });
   const playerData = useRef<PlayerDataType>({ ...PLAYER_DEFAULT_DATA });
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -59,11 +63,18 @@ const BombShooter = () => {
   const drawGrenade = (x: number, y: number, index: number) => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
-    if (index < 0 || index >= GRENADE_LIST.length || !context) return;
+    if (index < 0 || index >= GRENADE_LIST.length || !context || !canvas)
+      return;
 
     // Draw the grenade sprite
     context.beginPath();
-    context.arc(x + 20, y + 20, 19, 0, 2 * Math.PI);
+    context.arc(
+      x + canvas.width / levelData.current.columns,
+      y + canvas.height / 2 / levelData.current.rows,
+      canvas.width / 2 / levelData.current.columns,
+      0,
+      2 * Math.PI
+    );
     context.stroke();
     context.fillStyle = GRENADE_LIST[index];
     context.fill();
@@ -81,7 +92,7 @@ const BombShooter = () => {
       x,
       y,
       levelData.current.width,
-      levelData.current.tileHeight - 6
+      tileSize.current.height - 6
     );
   };
 
@@ -158,15 +169,14 @@ const BombShooter = () => {
   // Snap grenade to the grid
   const snapGrenade = () => {
     // Get the grid position
-    const centerX =
-      playerData.current.grenade.x + levelData.current.tileWidth / 2;
-    const centerY =
-      playerData.current.grenade.y + levelData.current.tileHeight / 2;
+    const centerX = playerData.current.grenade.x + tileSize.current.width / 2;
+    const centerY = playerData.current.grenade.y + tileSize.current.height / 2;
     let gridPosition = getGridPosition(
       centerX,
       centerY,
       levelData.current,
-      rowOffset.current
+      rowOffset.current,
+      tileSize.current.width
     );
 
     // Make sure the grid position is valid
@@ -270,7 +280,7 @@ const BombShooter = () => {
     setGameState(GAME_STATES.shootGrenade);
   };
 
-  const stateShootGrenade = (dt: number) => {
+  const stateShootGrenade = (dt: number, canvas: HTMLCanvasElement) => {
     // Move the grenade in the direction of the mouse
     playerData.current.grenade.x +=
       dt *
@@ -288,15 +298,13 @@ const BombShooter = () => {
       playerData.current.grenade.angle = 180 - playerData.current.grenade.angle;
       playerData.current.grenade.x = levelData.current.x;
     } else if (
-      playerData.current.grenade.x + levelData.current.tileWidth >=
+      playerData.current.grenade.x + tileSize.current.width >=
       levelData.current.x + levelData.current.width
     ) {
       // Right edge
       playerData.current.grenade.angle = 180 - playerData.current.grenade.angle;
       playerData.current.grenade.x =
-        levelData.current.x +
-        levelData.current.width -
-        levelData.current.tileWidth;
+        levelData.current.x + levelData.current.width - tileSize.current.width;
     }
 
     // Collisions with the top of the level
@@ -319,6 +327,7 @@ const BombShooter = () => {
 
         // Check for intersections
         const tileCoordinate = getTileCoordinate(
+          canvas,
           i,
           j,
           levelData.current,
@@ -327,11 +336,11 @@ const BombShooter = () => {
         );
         if (
           circleIntersection(
-            playerData.current.grenade.x + levelData.current.tileWidth / 2,
-            playerData.current.grenade.y + levelData.current.tileHeight / 2,
+            playerData.current.grenade.x + tileSize.current.width / 2,
+            playerData.current.grenade.y + tileSize.current.height / 2,
             levelData.current.radius,
-            tileCoordinate.tileX + levelData.current.tileWidth / 2,
-            tileCoordinate.tileY + levelData.current.tileHeight / 2,
+            tileCoordinate.tileX + tileSize.current.width / 2,
+            tileCoordinate.tileY + tileSize.current.height / 2,
             levelData.current.radius
           )
         ) {
@@ -418,7 +427,7 @@ const BombShooter = () => {
               tile.y * levelData.current.rowHeight + tile.shift;
             const shootingArea =
               (levelData.current.rows - 1) * levelData.current.rowHeight +
-              levelData.current.tileHeight;
+              tileSize.current.height;
 
             if (tile.alpha === 0 || dropCluster > shootingArea) {
               tile.type = -1;
@@ -468,8 +477,8 @@ const BombShooter = () => {
     // Get the mouse angle
     let mouseAngle = radToDeg(
       Math.atan2(
-        playerData.current.y + levelData.current.tileHeight / 2 - pos.y,
-        pos.x - (playerData.current.x + levelData.current.tileWidth / 2)
+        playerData.current.y + tileSize.current.height / 2 - pos.y,
+        pos.x - (playerData.current.x + tileSize.current.width / 2)
       )
     );
 
@@ -525,7 +534,7 @@ const BombShooter = () => {
   };
 
   // Update the game state
-  const update = (timeFrame: number) => {
+  const update = (timeFrame: number, canvas: HTMLCanvasElement) => {
     let dt = (timeFrame - lastFrame.current) / 1000;
     lastFrame.current = timeFrame;
 
@@ -534,7 +543,7 @@ const BombShooter = () => {
 
     if (gameState.current === GAME_STATES.shootGrenade) {
       // Bubble is moving
-      stateShootGrenade(dt);
+      stateShootGrenade(dt, canvas);
     } else if (gameState.current === GAME_STATES.removeCluster) {
       // Remove cluster and drop tiles
       stateRemoveCluster(dt);
@@ -545,7 +554,7 @@ const BombShooter = () => {
   const renderTiles = () => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
-    if (!context) return;
+    if (!canvas || !context) return;
 
     // Ceiling
     for (let k = 0; k < levelData.current.rows; k++) {
@@ -569,6 +578,7 @@ const BombShooter = () => {
 
         // Calculate the tile coordinates
         const tileCoordinate = getTileCoordinate(
+          canvas,
           i,
           j,
           levelData.current,
@@ -602,8 +612,8 @@ const BombShooter = () => {
 
     if (!context) return;
 
-    let centerX = playerData.current.x + levelData.current.tileWidth / 2;
-    let centerY = playerData.current.y + levelData.current.tileHeight / 2;
+    let centerX = playerData.current.x + tileSize.current.width / 2;
+    let centerY = playerData.current.y + tileSize.current.height / 2;
 
     // Draw player background circle
     context.fillStyle = "#7a7a7a";
@@ -629,11 +639,11 @@ const BombShooter = () => {
     context.lineTo(
       centerX +
         1.5 *
-          levelData.current.tileWidth *
+          tileSize.current.width *
           Math.cos(degToRad(playerData.current.angle)),
       centerY -
         1.5 *
-          levelData.current.tileHeight *
+          tileSize.current.height *
           Math.sin(degToRad(playerData.current.angle))
     );
     context.stroke();
@@ -668,7 +678,7 @@ const BombShooter = () => {
     // Draw the frame around the game
     drawFrame();
 
-    let yOffset = levelData.current.tileHeight / 2;
+    let yOffset = tileSize.current.height / 2;
 
     // Draw level background
     context.fillStyle = "#8c8c8c";
@@ -688,7 +698,7 @@ const BombShooter = () => {
       levelData.current.x - 4,
       levelData.current.y - 4 + levelData.current.height + 4 - yOffset,
       levelData.current.width + 8,
-      2 * levelData.current.tileHeight + 3
+      2 * tileSize.current.height + 3
     );
 
     // Render player grenade
@@ -701,10 +711,7 @@ const BombShooter = () => {
         levelData.current.x - 4,
         levelData.current.y - 4,
         levelData.current.width + 8,
-        levelData.current.height +
-          2 * levelData.current.tileHeight +
-          8 -
-          yOffset
+        levelData.current.height + 2 * tileSize.current.height + 8 - yOffset
       );
 
       context.fillStyle = "#ffffff";
@@ -723,7 +730,7 @@ const BombShooter = () => {
       );
     }
 
-    update(fps);
+    update(fps, canvas);
     animationFrame.current = window.requestAnimationFrame(render);
   };
 
@@ -830,23 +837,27 @@ const BombShooter = () => {
       }
     }
 
-    levelData.current.width =
-      levelData.current.columns * levelData.current.tileWidth +
-      levelData.current.tileWidth / 2;
+    tileSize.current.width = canvas.width / levelData.current.columns;
+    tileSize.current.height = canvas.height / levelData.current.rows;
+
+    levelData.current.width = canvas.width;
+
     levelData.current.height =
-      (levelData.current.rows - 1) * levelData.current.rowHeight +
-      levelData.current.tileHeight;
+      canvas.height - levelData.current.rowHeight - tileSize.current.height;
+    // levelData.current.height =
+    //   (levelData.current.rows - 1) * levelData.current.rowHeight +
+    //   levelData.current.tileHeight;
 
     // Init the player
     playerData.current.x =
       levelData.current.x +
       levelData.current.width / 2 -
-      levelData.current.tileWidth / 2;
+      tileSize.current.width / 2;
     playerData.current.y = levelData.current.y + levelData.current.height;
     playerData.current.angle = 90;
     playerData.current.tileType = 0;
     playerData.current.nextGrenade.x =
-      playerData.current.x - 2 * levelData.current.tileWidth;
+      playerData.current.x - 2 * tileSize.current.width;
     playerData.current.nextGrenade.y = playerData.current.y;
 
     // New game
@@ -889,7 +900,11 @@ const BombShooter = () => {
 
   return (
     <div className="canvasContainer">
-      <canvas ref={canvasRef} width={800} height={400} />
+      <canvas
+        ref={canvasRef}
+        width={levelData.current.width}
+        height={levelData.current.height}
+      />
     </div>
   );
 };

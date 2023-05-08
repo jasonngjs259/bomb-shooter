@@ -92,20 +92,23 @@ export const getMousePosition = (canvas: HTMLCanvasElement, e: MouseEvent) => {
 
 // Get the tile coordinate
 export const getTileCoordinate = (
+  canvas: HTMLCanvasElement,
   column: number,
   row: number,
   levelData: LevelDataType,
   rowOffset: number,
   isCeiling: boolean
 ) => {
-  let tileX = levelData.x + column * levelData.tileWidth;
+  let tileWidth = canvas.width / levelData.columns;
+  let tileX = levelData.x + column * tileWidth;
 
   // X offset for odd or even rows
   if (!isCeiling && (row + rowOffset) % 2) {
-    tileX += levelData.tileWidth / 2;
+    tileX += tileWidth / 2;
   }
 
-  let tileY = levelData.y + row * levelData.rowHeight;
+  let tileHeight = canvas.height / 2 / (levelData.rows - 1);
+  let tileY = levelData.y + row * tileHeight;
 
   return { tileX: tileX, tileY: tileY };
 };
@@ -115,16 +118,22 @@ export const getGridPosition = (
   x: number,
   y: number,
   levelData: LevelDataType,
-  rowOffset: number
+  rowOffset: number,
+  width: number
 ) => {
   let gridY = Math.floor((y - levelData.y) / levelData.rowHeight);
 
+  console.log(y, levelData.rowHeight);
+
   // Check for offset
   let xOffset = 0;
+  console.log(gridY, rowOffset);
   if ((gridY + rowOffset) % 2) {
-    xOffset = levelData.tileWidth / 2;
+    xOffset = width / 2;
   }
-  let gridX = Math.floor((x - xOffset - levelData.x) / levelData.tileWidth);
+  let gridX = Math.floor((x - xOffset - levelData.x) / width);
+
+  console.log(x, xOffset, levelData.x);
 
   return { x: gridX, y: gridY };
 };

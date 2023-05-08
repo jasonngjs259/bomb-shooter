@@ -33,18 +33,16 @@ export const PLAYER_DEFAULT_DATA = {
 export const BOMB_SHOOTER_LEVEL_DATA: LevelDataType = {
   x: 10,
   y: 15,
-  width: 0,
-  height: 0,
+  width: 1600,
+  height: 900,
   columns: 19,
   rows: 9,
-  tileWidth: 40,
-  tileHeight: 40,
-  rowHeight: 34,
+  rowHeight: 50,
   radius: 20,
   tiles: [],
   initialItemRow: 3,
   addRowItem: "ceiling",
-  addNewItemRowCounter: 5,
+  addNewItemRowCounter: 20,
   isTimerOn: false,
 };
 
