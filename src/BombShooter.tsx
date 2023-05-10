@@ -32,6 +32,7 @@ import {
 const BombShooter = () => {
   const [gameStart, setGameStart] = useState<boolean>(false);
   const [score, setScore] = useState<number>(0);
+  const [timer, setTimer] = useState<number>(0);
 
   const levelData = useRef<LevelDataType>({ ...BOMB_SHOOTER_LEVEL_DATA });
   const playerData = useRef<PlayerDataType>({ ...PLAYER_DEFAULT_DATA });
@@ -129,8 +130,8 @@ const BombShooter = () => {
     context.fillRect(
       x,
       y,
-      levelData.current.tileWidth,
-      levelData.current.tileHeight
+      levelData.current.width,
+      levelData.current.tileHeight - 6
     );
   };
 
@@ -220,7 +221,7 @@ const BombShooter = () => {
     return false;
   };
 
-  const addGrenades = () => {
+  const addNewItemRow = () => {
     // Move the rows downwards
     for (let i = 0; i < levelData.current.columns; i++) {
       for (let j = 0; j < levelData.current.rows - 1; j++) {
@@ -229,10 +230,17 @@ const BombShooter = () => {
       }
     }
 
-    // Add a new row of bubbles at the top
-    for (let i = 0; i < levelData.current.columns; i++) {
-      // Add random, existing, colors
-      levelData.current.tiles[i][0].type = -2;
+    if (levelData.current.addRowItem === "ceiling") {
+      for (let i = 0; i < levelData.current.columns; i++) {
+        levelData.current.tiles[i][0].type = -2;
+      }
+    } else if (levelData.current.addRowItem === "grenades") {
+      for (let i = 0; i < levelData.current.columns; i++) {
+        levelData.current.tiles[i][0].type = getExistingColor(
+          GRENADE_LIST,
+          levelData.current
+        );
+      }
     }
   };
 
@@ -335,13 +343,16 @@ const BombShooter = () => {
       }
     }
 
-    // No clusters found
-    turnCounter.current++;
-    if (turnCounter.current >= 5) {
-      // Add a row of grenades
-      addGrenades();
-      turnCounter.current = 0;
-      rowOffset.current = (rowOffset.current + 1) % 2;
+    if (levelData.current.addRowItem !== "") {
+      if (!levelData.current.isTimerOn) {
+        turnCounter.current++;
+        if (turnCounter.current >= levelData.current.addNewItemRowCounter) {
+          // Add a row of grenades
+          addNewItemRow();
+          turnCounter.current = 0;
+          rowOffset.current = (rowOffset.current + 1) % 2;
+        }
+      }
 
       if (checkGameOver()) {
         return;
@@ -577,13 +588,9 @@ const BombShooter = () => {
 
         if (tileFound) {
           setGameState(GAME_STATES.ready);
-          // gameState.current = GAME_STATES.ready;
-          // setGameState(GAME_STATES.ready);
         } else {
           // No tiles left, game over
           setGameState(GAME_STATES.gameOver);
-          // gameState.current = GAME_STATES.gameOver;
-          // setGameState(GAME_STATES.gameOver);
         }
       }
     }
@@ -679,6 +686,17 @@ const BombShooter = () => {
     const context = canvas?.getContext("2d");
     if (!context) return;
 
+    // Ceiling
+    for (let k = 0; k < levelData.current.rows; k++) {
+      const ceilingTile = levelData.current.tiles[0][k];
+      if (ceilingTile.type === -2) {
+        drawCeiling(
+          levelData.current.x,
+          levelData.current.y + k * levelData.current.rowHeight
+        );
+      }
+    }
+
     // Top to bottom
     for (let j = 0; j < levelData.current.rows; j++) {
       for (let i = 0; i < levelData.current.columns; i++) {
@@ -711,18 +729,6 @@ const BombShooter = () => {
           );
 
           context.restore();
-        }
-
-        const ceilingCoordinate = getTileCoordinate(
-          i,
-          j,
-          levelData.current,
-          rowOffset.current,
-          true
-        );
-
-        if (tile.type === -2) {
-          drawCeiling(ceilingCoordinate.tileX, ceilingCoordinate.tileY);
         }
       }
     }
@@ -801,7 +807,7 @@ const BombShooter = () => {
     // Draw the frame around the game
     drawFrame();
 
-    let yoffset = levelData.current.tileHeight / 2;
+    let yOffset = levelData.current.tileHeight / 2;
 
     // Draw level background
     context.fillStyle = "#8c8c8c";
@@ -809,7 +815,7 @@ const BombShooter = () => {
       levelData.current.x - 4,
       levelData.current.y - 4,
       levelData.current.width + 8,
-      levelData.current.height + 4 - yoffset
+      levelData.current.height + 4 - yOffset
     );
 
     // Render tiles
@@ -819,7 +825,7 @@ const BombShooter = () => {
     context.fillStyle = "#656565";
     context.fillRect(
       levelData.current.x - 4,
-      levelData.current.y - 4 + levelData.current.height + 4 - yoffset,
+      levelData.current.y - 4 + levelData.current.height + 4 - yOffset,
       levelData.current.width + 8,
       2 * levelData.current.tileHeight + 3
     );
@@ -837,7 +843,7 @@ const BombShooter = () => {
         levelData.current.height +
           2 * levelData.current.tileHeight +
           8 -
-          yoffset
+          yOffset
       );
 
       context.fillStyle = "#ffffff";
@@ -862,6 +868,9 @@ const BombShooter = () => {
 
   // Create a random level
   const createLevel = () => {
+    // Set new counter
+    turnCounter.current = 0;
+
     // Create a level with random tiles
     for (let j = 0; j < levelData.current.rows; j++) {
       let randomTile = randomRange(0, GRENADE_LIST.length - 1);
@@ -880,21 +889,37 @@ const BombShooter = () => {
         }
         count++;
 
-        if (j < levelData.current.rows / 2) {
+        if (j < levelData.current.initialItemRow) {
           levelData.current.tiles[i][j].type = randomTile;
         } else {
           levelData.current.tiles[i][j].type = -1;
         }
       }
     }
+
+    // for (let n = 0; n < KABOOM_LEVEL_DATA.initialEmptyTiles.length; n++) {
+    //   const blockedTilesAtN0 = KABOOM_LEVEL_DATA.initialEmptyTiles[n]?.[0];
+    //   const blockedTilesAtN1 = KABOOM_LEVEL_DATA.initialEmptyTiles[n]?.[1];
+    //   if (
+    //     blockedTilesAtN0 &&
+    //     blockedTilesAtN1 &&
+    //     i === blockedTilesAtN0 &&
+    //     j === blockedTilesAtN1
+    //   ) {
+    //     levelDataCurrentTilesAtIJ.type = -1;
+    //   } else {
+    //     levelDataCurrentTilesAtIJ.type = randomTile;
+    //   }
+    // }
   };
 
   // Start a new game
   const newGame = () => {
     // Set the gamestate to ready
     setGameState(GAME_STATES.ready);
-    // gameState.current = GAME_STATES.ready;
-    // setGameState(GAME_STATES.ready);
+    setTimeout(() => {
+      setTimer(-1);
+    }, 1000);
 
     // Create the level
     createLevel();
@@ -973,10 +998,33 @@ const BombShooter = () => {
   }, []);
 
   useEffect(() => {
-    if (gameStart) render(60);
+    if (gameStart) render(0);
 
     return () => window.cancelAnimationFrame(animationFrame.current);
   }, [gameStart]);
+
+  useEffect(() => {
+    const addRowItemInterval = setTimeout(() => {
+      setTimer(timer + 1);
+    }, 1000);
+
+    if (levelData.current.isTimerOn && timer >= 3) {
+      setTimer(0);
+      addNewItemRow();
+      rowOffset.current = (rowOffset.current + 1) % 2;
+    }
+
+    if (levelData.current.addRowItem === "" || !levelData.current.isTimerOn) {
+      clearTimeout(addRowItemInterval);
+    }
+
+    if (checkGameOver()) {
+      clearTimeout(addRowItemInterval);
+      return;
+    }
+
+    return () => clearTimeout(addRowItemInterval);
+  }, [timer]);
 
   return (
     <div className="backgroundContainer">

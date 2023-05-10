@@ -29,7 +29,10 @@ export interface LevelDataType {
   rowHeight: number;
   radius: number;
   tiles: TileType[][];
-  ignoreMatchedShot: boolean;
+  initialItemRow: number;
+  addRowItem: string;
+  addNewItemRowCounter: number;
+  isTimerOn: boolean;
 }
 
 export interface PlayerDataType {
