@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  BLAST_IMAGE,
   BOMB_SHOOTER_LEVEL_DATA,
   BOMB_SHOOTER_TILE,
   GRENADE_LIST,
   PLAYER_DEFAULT_DATA,
+  POINT_TEXT_COLOR,
 } from "./constants";
-import { GAME_STATES, LevelDataType, PlayerDataType, TileType } from "./types";
+import {
+  GAME_STATES,
+  LevelDataType,
+  PlayerDataType,
+  TileType,
+  Vector2,
+} from "./types";
 import {
   circleIntersection,
   degToRad,
@@ -18,10 +26,12 @@ import {
   radToDeg,
   randomRange,
   resetRemoved,
+  getBaseScore,
 } from "./utils";
 
 const BombShooter = () => {
   const [gameStart, setGameStart] = useState<boolean>(false);
+  const [score, setScore] = useState<number>(0);
 
   const levelData = useRef<LevelDataType>({ ...BOMB_SHOOTER_LEVEL_DATA });
   const playerData = useRef<PlayerDataType>({ ...PLAYER_DEFAULT_DATA });
@@ -37,11 +47,50 @@ const BombShooter = () => {
   const fps = useRef<number>(0);
   const animationFrame = useRef<number>(0);
   const gameState = useRef<number>(GAME_STATES.initial);
+  const clusterScore = useRef<number>(0);
+  const showScoreAnimation = useRef<number>(1);
+  const tileLandingPosition = useRef<Vector2>({ x: 0, y: 0 });
+  const showExplosionAnimation = useRef<number>(1);
+  const scaleAmount = useRef<number>(1);
 
+  function loadImages(imagefiles: string[]) {
+    // Initialize variables
+    let loadcount = 0;
+    let loadtotal = imagefiles.length;
+    let preloaded = false;
+
+    // Load the images
+    var loadedimages = [];
+    for (var i = 0; i < imagefiles.length; i++) {
+      // Create the image object
+      var image = new Image();
+
+      // Add onload event handler
+      image.onload = function () {
+        loadcount++;
+        if (loadcount == loadtotal) {
+          // Done loading
+          preloaded = true;
+          console.log(preloaded);
+        }
+      };
+
+      // Set the source url of the image
+      image.src = imagefiles[i];
+
+      // Save to the image array
+      loadedimages[i] = image;
+    }
+
+    // Return an array of images
+    return loadedimages;
+  }
   function setGameState(newGameState: number) {
     gameState.current = newGameState;
 
     animationState.current = 0;
+    showScoreAnimation.current = 1;
+    showExplosionAnimation.current = 1;
   }
 
   // Draw a frame around the game
@@ -63,6 +112,7 @@ const BombShooter = () => {
     // Draw the grenade sprite
     context.beginPath();
     context.arc(x + 20, y + 20, 19, 0, 2 * Math.PI);
+    context.strokeStyle = "#000000";
     context.stroke();
     context.fillStyle = GRENADE_LIST[index];
     context.fill();
@@ -97,6 +147,61 @@ const BombShooter = () => {
     if (!context) return;
     var textdim = context.measureText(text);
     context.fillText(text, x + (width - textdim.width) / 2, y);
+  };
+
+  const drawGainScore = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!context) return;
+
+    const coordinate = getTileCoordinate(
+      tileLandingPosition.current.x,
+      tileLandingPosition.current.y,
+      levelData.current,
+      rowOffset.current,
+      false
+    );
+
+    context.fillStyle = POINT_TEXT_COLOR;
+    context.font =
+      clusterScore.current > 30 ? "60px Smooch Sans" : "48px Smooch Sans";
+    context.strokeText(
+      "+" + clusterScore.current.toString(),
+      coordinate.tileX,
+      coordinate.tileY + 20
+    );
+    context.fillText(
+      "+" + clusterScore.current.toString(),
+      coordinate.tileX,
+      coordinate.tileY + 20
+    );
+  };
+
+  const drawExplosion = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!context) return;
+
+    const coordinate = getTileCoordinate(
+      tileLandingPosition.current.x,
+      tileLandingPosition.current.y,
+      levelData.current,
+      rowOffset.current,
+      false
+    );
+
+    let images = loadImages([BLAST_IMAGE]);
+    context.drawImage(
+      images[0] as HTMLImageElement,
+      700,
+      0,
+      1500,
+      351,
+      coordinate.tileX,
+      coordinate.tileY,
+      300,
+      150
+    );
   };
 
   const checkGameOver = () => {
@@ -223,6 +328,7 @@ const BombShooter = () => {
       );
 
       if (cluster.current.length >= 3) {
+        tileLandingPosition.current = { x: gridPosition.x, y: gridPosition.y };
         // Remove the cluster
         setGameState(GAME_STATES.removeCluster);
         return;
@@ -353,17 +459,50 @@ const BombShooter = () => {
         for (let i = 0; i < floatingClusters.current.length; i++) {
           for (let j = 0; j < floatingClusters.current[i].length; j++) {
             let tile = floatingClusters.current[i][j];
-            // tile.shift = 0;
+
             tile.shift = 1;
             tile.velocity = playerData.current.grenade.dropSpeed;
           }
         }
+
+        // Update score with floating clusters
+        const baseScore = getBaseScore(
+          cluster.current.length + floatingClusters.current.length
+        );
+        clusterScore.current = baseScore;
+        setScore((prev) => prev + baseScore);
+      } else {
+        // Update score without floating clusters
+        const baseScore = getBaseScore(cluster.current.length);
+        clusterScore.current = baseScore;
+        setScore((prev) => prev + baseScore);
       }
 
       animationState.current = 1;
     }
 
     if (animationState.current === 1) {
+      // Pop-up gain score
+      let isShowGainScore = true;
+      showScoreAnimation.current -= dt * 2;
+
+      if (showScoreAnimation.current < 0) {
+        isShowGainScore = false;
+      } else {
+        drawGainScore();
+      }
+
+      // Pop up animation
+      let isShowExplosionAnimation = true;
+      showExplosionAnimation.current -= dt * 2;
+      console.log(showExplosionAnimation.current);
+
+      if (showExplosionAnimation.current < 0) {
+        isShowExplosionAnimation = false;
+      } else {
+        drawExplosion();
+      }
+
       // Pop grenades
       let tilesLeft = false;
       for (let i = 0; i < cluster.current.length; i++) {
@@ -418,7 +557,7 @@ const BombShooter = () => {
         }
       }
 
-      if (!tilesLeft) {
+      if (!tilesLeft && !isShowGainScore) {
         // Next grenade
         nextGrenade();
 
@@ -840,8 +979,14 @@ const BombShooter = () => {
   }, [gameStart]);
 
   return (
-    <div className="canvasContainer">
-      <canvas ref={canvasRef} width={800} height={400} />
+    <div className="backgroundContainer">
+      <div className="scoreContainer">
+        <span>Score:</span>
+        <span className="scoreValue">{score}</span>
+      </div>
+      <div className="canvasContainer">
+        <canvas ref={canvasRef} width={800} height={400} />
+      </div>
     </div>
   );
 };

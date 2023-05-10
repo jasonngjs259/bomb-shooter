@@ -52,3 +52,8 @@ export interface PlayerDataType {
     tileType: number;
   };
 }
+
+export type Vector2 = {
+  x: number;
+  y: number;
+};

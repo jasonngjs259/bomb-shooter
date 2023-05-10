@@ -1,5 +1,8 @@
 import { LevelDataType } from "./types";
+import blastImage from "./assets/blastImage.png";
 
+export const BLAST_IMAGE = blastImage;
+export const POINT_TEXT_COLOR = "#D1AAAA";
 export const GRENADE_LIST = [
   "red",
   "yellow",

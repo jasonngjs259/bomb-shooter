@@ -285,3 +285,7 @@ export const findFloatingClusters = (
 
   return foundClusters;
 };
+
+export const getBaseScore = (totalTiles: number) => {
+  return totalTiles * 10 + (totalTiles - 3) * 10;
+};
