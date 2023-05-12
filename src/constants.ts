@@ -1,5 +1,12 @@
 import { LevelDataType } from "./types";
 
+export const COLOURS = {
+  grey: "#656565",
+  lightGrey: "#8c8c8c",
+  darkerGrey: "#7a7a7a",
+  lighterGrey: "#e8eaec",
+};
+
 export const GRENADE_LIST = [
   "red",
   "yellow",
