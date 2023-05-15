@@ -1,5 +1,10 @@
-import { NEIGHBORS_OFFSETS } from "./constants";
+import { NEIGHBORS_OFFSETS, SCREEN_SIZE } from "./constants";
 import { LevelDataType, TileType } from "./types";
+
+// export const ratioConvertion = (tempWidth: number, tempHeight: number) => {
+//   const width =  / SCREEN_SIZE.width;
+//   const height = tempHeight /
+// }
 
 // Get a random int between low and high, inclusive
 export const randomRange = (low: number, high: number) => {

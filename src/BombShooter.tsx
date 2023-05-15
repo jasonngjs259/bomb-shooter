@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   BOMB_SHOOTER_LEVEL_DATA,
   BOMB_SHOOTER_TILE,
-  COLOURS,
+  BACKGROUND_COLOURS,
   GRENADE_LIST,
   PLAYER_DEFAULT_DATA,
 } from "./constants";
@@ -31,6 +31,7 @@ const BombShooter = () => {
   });
   const levelData = useRef<LevelDataType>({ ...BOMB_SHOOTER_LEVEL_DATA });
   const playerData = useRef<PlayerDataType>({ ...PLAYER_DEFAULT_DATA });
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rowOffset = useRef<number>(0);
   const cluster = useRef<TileType[]>([]);
@@ -56,7 +57,7 @@ const BombShooter = () => {
     const context = canvas?.getContext("2d");
     if (!context || !canvas) return;
     // Draw background
-    context.fillStyle = COLOURS.lighterGrey;
+    context.fillStyle = BACKGROUND_COLOURS.lighterGrey;
     context.fillRect(0, 0, canvas.width, canvas.height);
   };
 
@@ -617,7 +618,7 @@ const BombShooter = () => {
     let centerY = playerData.current.y + tileSize.current.height / 2;
 
     // Draw player background circle
-    context.fillStyle = COLOURS.darkerGrey;
+    context.fillStyle = BACKGROUND_COLOURS.darkerGrey;
     context.beginPath();
     context.arc(
       centerX,
@@ -629,7 +630,7 @@ const BombShooter = () => {
     );
     context.fill();
     context.lineWidth = 2;
-    context.strokeStyle = COLOURS.lightGrey;
+    context.strokeStyle = BACKGROUND_COLOURS.lightGrey;
     context.stroke();
 
     // Draw the angle
@@ -682,7 +683,7 @@ const BombShooter = () => {
     let yOffset = tileSize.current.height / 2;
 
     // Draw level background
-    context.fillStyle = COLOURS.lightGrey;
+    context.fillStyle = BACKGROUND_COLOURS.lightGrey;
     context.fillRect(
       levelData.current.x - 4,
       levelData.current.y - 4,
@@ -690,11 +691,13 @@ const BombShooter = () => {
       levelData.current.height + 4 - yOffset
     );
 
+    console.log(levelData.current.width, levelData.current.height);
+
     // Render tiles
     renderTiles();
 
     // Draw level bottom
-    context.fillStyle = COLOURS.grey;
+    context.fillStyle = BACKGROUND_COLOURS.grey;
     context.fillRect(
       levelData.current.x - 4,
       levelData.current.y - 4 + levelData.current.height + 4 - yOffset,
@@ -818,7 +821,11 @@ const BombShooter = () => {
   // Initialize the game
   const initialGame = () => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const canvasContainer = canvasContainerRef.current;
+    if (!canvas || !canvasContainer) return;
+
+    canvas.width = canvasContainer.clientWidth;
+    canvas.height = canvasContainer.clientHeight;
 
     // Initialize the two-dimensional tile array
     for (let i = 0; i < levelData.current.columns; i++) {
@@ -901,7 +908,7 @@ const BombShooter = () => {
   }, [timer]);
 
   return (
-    <div className="canvasContainer">
+    <div ref={canvasContainerRef} className="canvasContainer">
       <canvas
         ref={canvasRef}
         // width={levelData.current.width}

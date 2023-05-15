@@ -1,6 +1,11 @@
 import { LevelDataType } from "./types";
 
-export const COLOURS = {
+export const SCREEN_SIZE = {
+  width: 1920,
+  height: 1080,
+};
+
+export const BACKGROUND_COLOURS = {
   grey: "#656565",
   lightGrey: "#8c8c8c",
   darkerGrey: "#7a7a7a",
@@ -42,7 +47,7 @@ export const BOMB_SHOOTER_LEVEL_DATA: LevelDataType = {
   y: 15,
   width: 1600,
   height: 900,
-  columns: 19,
+  columns: 15,
   rows: 9,
   rowHeight: 50,
   radius: 20,
