@@ -6,6 +6,7 @@ import {
   GRENADE_LIST,
   PLAYER_DEFAULT_DATA,
   POINT_TEXT_COLOR,
+  STAY_EMPTY_TILE,
 } from "./constants";
 import {
   GAME_STATES,
@@ -730,6 +731,45 @@ const BombShooter = () => {
 
           context.restore();
         }
+
+        // for (let a = 0; a < STAY_EMPTY_TILE.length; a += 1) {
+        //   if (i === STAY_EMPTY_TILE[a][0] && j === STAY_EMPTY_TILE[a][1]) {
+        //     // console.log(STAY_EMPTY_TILE[a][0], STAY_EMPTY_TILE[a][1]);
+        //     break;
+        //   } else {
+        //     if (tile.type >= 0) {
+        //       // console.log(j, i);
+        //       // Support transparency
+        //       context.save();
+        //       context.globalAlpha = tile.alpha;
+
+        //       // Draw the tile using the color
+        //       drawGrenade(
+        //         tileCoordinate.tileX,
+        //         tileCoordinate.tileY + shift,
+        //         tile.type
+        //       );
+
+        //       context.restore();
+        //     }
+        //   }
+        //   // console.log(i, j);
+        //   if (tile.type >= 0) {
+        //     // console.log(j, i);
+        //     // Support transparency
+        //     context.save();
+        //     context.globalAlpha = tile.alpha;
+
+        //     // Draw the tile using the color
+        //     drawGrenade(
+        //       tileCoordinate.tileX,
+        //       tileCoordinate.tileY + shift,
+        //       tile.type
+        //     );
+
+        //     context.restore();
+        //   }
+        // }
       }
     }
   };
@@ -889,10 +929,17 @@ const BombShooter = () => {
         }
         count++;
 
-        if (j < levelData.current.initialItemRow) {
-          levelData.current.tiles[i][j].type = randomTile;
-        } else {
-          levelData.current.tiles[i][j].type = -1;
+        for (let a = 0; a < STAY_EMPTY_TILE.length; a += 1) {
+          if (i === STAY_EMPTY_TILE[a][0] && j === STAY_EMPTY_TILE[a][1]) {
+            levelData.current.tiles[i][j].type = -1;
+            break;
+          }
+
+          if (j < levelData.current.initialItemRow) {
+            levelData.current.tiles[i][j].type = randomTile;
+          } else {
+            levelData.current.tiles[i][j].type = -1;
+          }
         }
       }
     }

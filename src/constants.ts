@@ -12,6 +12,12 @@ export const GRENADE_LIST = [
   "cyan",
 ];
 
+export const STAY_EMPTY_TILE = [
+  [10, 1],
+  [11, 1],
+  [12, 1],
+];
+
 export const PLAYER_DEFAULT_DATA = {
   x: 0,
   y: 0,
