@@ -108,6 +108,11 @@ export function FirstRunHint({ engine, phase, layout, reduced }: Props) {
   if (!showMain && !showSwap) return null;
 
   const bannerTop = py - (ARC_R + 70) * s;
+  // Swap hint sits clear above the socket's tap target (same size formula
+  // as SwapButton) so it never covers the NEXT bomb or its swap badge
+  const swapCx = layout.offsetX + next.x * s;
+  const targetHalf = Math.max(56, 2 * engine.config.radius * 1.5 * s) / 2;
+  const swapTop = layout.offsetY + next.y * s - targetHalf - 50;
   return (
     <View style={styles.root}>
       {showMain && (
@@ -128,8 +133,8 @@ export function FirstRunHint({ engine, phase, layout, reduced }: Props) {
         </>
       )}
       {showSwap && (
-        <View style={[styles.swap, { left: layout.offsetX + next.x * s - 90, top: layout.offsetY + (next.y - 70) * s }]}>
-          <Text style={styles.swapText}>{desktop ? "RIGHT-CLICK / X TO SWAP" : "TAP TO SWAP"}</Text>
+        <View style={[styles.swap, { left: Math.max(8, swapCx - 130), top: swapTop }]}>
+          <Text style={styles.swapText}>{desktop ? "CLICK NEXT · X · RIGHT-CLICK TO SWAP" : "TAP NEXT TO SWAP"}</Text>
           <Text style={styles.arrow}>▼</Text>
         </View>
       )}
@@ -161,7 +166,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     textAlign: "center",
   },
-  swap: { position: "absolute", width: 180, alignItems: "center" },
+  swap: { position: "absolute", width: 260, alignItems: "center" },
   swapText: {
     fontFamily: fonts.label,
     fontSize: 14,

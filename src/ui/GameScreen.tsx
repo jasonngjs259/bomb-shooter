@@ -17,7 +17,7 @@ import { activeRenderer, screenToBoard } from "../render";
 import { fitBoardInRect } from "../render/layout";
 import { useSettings } from "../storage/settings";
 import { FirstRunHint } from "./FirstRunHint";
-import { endCardDelay, GameOverOverlay } from "./GameOverOverlay";
+import { endCardArmDelay, GameOverOverlay } from "./GameOverOverlay";
 import { HUD_BAR_HEIGHT, HudBar, SidePanels } from "./Hud";
 import { PauseMenu } from "./PauseMenu";
 import { useScreenFade } from "./ScreenFade";
@@ -35,7 +35,7 @@ export function GameScreen() {
   const { engine, clock, frame } = useGameEngine({ reactFrames: !renderer.selfAnimated });
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
-  const { best, isNewBest } = useBestScore(engine);
+  const { best, isNewBest, recordScore } = useBestScore(engine);
   const { reducedMotion } = useSettings();
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const [menu, setMenu] = useState<"none" | "pause" | "settings">("none");
@@ -58,7 +58,7 @@ export function GameScreen() {
       engine.on("phaseChanged", ({ phase, previous }) => {
         if (phase === "ready" && previous !== "shooting" && previous !== "resolving") setMaxCombo(0);
         if (phase === "gameOver" || phase === "won") {
-          restartArmedAt.current = Date.now() + endCardDelay(phase === "won", reducedRef.current);
+          restartArmedAt.current = Date.now() + endCardArmDelay(phase === "won", reducedRef.current);
         }
       }),
     ];
@@ -136,16 +136,18 @@ export function GameScreen() {
   }, []);
 
   const toMenu = useCallback(() => {
+    recordScore(engine.getScore()); // an abandoned game still counts for BEST
     setMenu("none");
     clock.reset();
     engine.showTitle();
-  }, [engine, clock]);
+  }, [engine, clock, recordScore]);
 
   const restart = useCallback(() => {
+    recordScore(engine.getScore());
     setMenu("none");
     clock.reset();
     engine.newGame();
-  }, [engine, clock]);
+  }, [engine, clock, recordScore]);
 
   const { gesture, showAimGuide } = useAimInput({
     engine,

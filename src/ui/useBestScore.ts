@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GameEngineView } from "../game/types";
 import { loadBestScore, saveBestScore } from "../storage/bestScore";
 
 // Tracks the persisted best score and whether the last game beat it.
+// recordScore() also saves a game abandoned via Restart / Menu, so BEST
+// never appears to go backwards.
 export function useBestScore(engine: GameEngineView) {
   const [best, setBest] = useState(0);
   const [isNewBest, setIsNewBest] = useState(false);
@@ -35,5 +37,12 @@ export function useBestScore(engine: GameEngineView) {
     };
   }, [engine]);
 
-  return { best, isNewBest };
+  const recordScore = useCallback((score: number) => {
+    if (score <= bestRef.current) return;
+    bestRef.current = score;
+    setBest(score);
+    void saveBestScore(score);
+  }, []);
+
+  return { best, isNewBest, recordScore };
 }

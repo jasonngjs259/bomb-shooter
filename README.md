@@ -49,7 +49,7 @@ labels, ceiling slam with screen shake, hit-stop, game-over and win finales).
 Run it:
 
 ```bash
-npm install          # postinstall copies canvaskit.wasm into public/
+npm install          # postinstall copies canvaskit.wasm + the splash font into public/
 npx expo start       # scan the QR code with Expo Go (iOS / Android, SDK 57)
 npm run web          # or press `w`: desktop browser
 ```

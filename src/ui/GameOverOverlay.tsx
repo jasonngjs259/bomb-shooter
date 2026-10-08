@@ -51,6 +51,9 @@ function useCountUp(target: number, delayMs: number, durationMs: number) {
 // When the end card becomes visible/usable (ms after gameOver / won). The
 // keyboard restart uses the same arming time.
 export const endCardDelay = (won: boolean, reduced: boolean) => (reduced ? 300 : won ? 1600 : 1500);
+const CARD_FADE_MS = 320;
+// Restart (buttons and keyboard) arms only once the card has fully faded in
+export const endCardArmDelay = (won: boolean, reduced: boolean) => endCardDelay(won, reduced) + CARD_FADE_MS;
 
 export function GameOverOverlay({ won, score, best, isNewBest, maxCombo, reduced, onRetry, onMenu }: Props) {
   const delay = endCardDelay(won, reduced);
@@ -62,13 +65,13 @@ export function GameOverOverlay({ won, score, best, isNewBest, maxCombo, reduced
   // The card's buttons only take touches once it is visible
   const [interactive, setInteractive] = useState(false);
   useEffect(() => {
-    const id = setTimeout(() => setInteractive(true), delay);
+    const id = setTimeout(() => setInteractive(true), endCardArmDelay(won, reduced));
     return () => clearTimeout(id);
-  }, [delay]);
+  }, [won, reduced]);
 
   useEffect(() => {
     backdrop.value = withDelay(Math.max(0, delay - 400), withTiming(1, { duration: 400 }));
-    card.value = withDelay(delay, withTiming(1, { duration: 320, easing: easeOutCubic }));
+    card.value = withDelay(delay, withTiming(1, { duration: CARD_FADE_MS, easing: easeOutCubic }));
     if (!won && !reduced) {
       glitch.value = withDelay(
         delay + 600,

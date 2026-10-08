@@ -197,7 +197,7 @@ export function SidePanels({
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Swap bomb"
+          accessibilityLabel="Next bomb, activate to swap"
           onPress={onSwap}
           style={[styles.nextSwatch, { backgroundColor: next.base, boxShadow: `0px 0px 16px ${next.glow}` }, Platform.OS === "web" && styles.pointer]}
         />
