@@ -8,7 +8,8 @@
 // Screen points are converted with the active renderer's screenToBoard, so a
 // perspective renderer only needs to supply its own mapping.
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Platform } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
 import { GameEngine } from "../game/engine";
 import { Vec2 } from "../game/types";
@@ -28,6 +29,7 @@ export function useAimInput({ engine, layout, screenToBoard, onStart, onPause, b
   const [pointerDown, setPointerDown] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [keyboardAim, setKeyboardAim] = useState(false);
+  const [mouseAim, setMouseAim] = useState(false);
 
   // Gesture objects are created once; they read the latest layout via a ref.
   const latest = useRef({ layout, screenToBoard });
@@ -92,7 +94,40 @@ export function useAimInput({ engine, layout, screenToBoard, onStart, onPause, b
     return Gesture.Simultaneous(pan, hover);
   }, [engine]);
 
+  // Web mouse: RNGH's Hover gesture can miss the first move after a click
+  // (it re-activates only on the next event), so also aim from plain
+  // pointermove events. The game view fills the window, so client
+  // coordinates are container coordinates.
+  const blockedRef = useRef(blocked);
+  blockedRef.current = blocked;
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || e.buttons !== 0) return; // drags go through Pan
+      if (blockedRef.current?.()) return;
+      const phase = engine.getPhase();
+      if (phase !== "ready" && phase !== "shooting" && phase !== "resolving") return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest('[role="button"], button, a')) return; // over HUD / swap buttons
+      const { layout: l, screenToBoard: toBoard } = latest.current;
+      const p = toBoard(l, e.clientX, e.clientY);
+      const n = engine.getNextBomb();
+      const r = Math.max(engine.config.radius * 1.5, 30 / Math.max(0.01, l.scale));
+      if ((p.x - n.x) ** 2 + (p.y - n.y) ** 2 <= r * r) return; // resting on the socket
+      engine.aimAt(p.x, p.y);
+      setMouseAim(true);
+      setKeyboardAim(false);
+    };
+    const onLeave = () => setMouseAim(false);
+    window.addEventListener("pointermove", onMove);
+    document.documentElement.addEventListener("mouseleave", onLeave);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      document.documentElement.removeEventListener("mouseleave", onLeave);
+    };
+  }, [engine]);
+
   useKeyboardControls({ engine, onStart, onPause, blocked, onAimKey: () => setKeyboardAim(true) });
 
-  return { gesture, showAimGuide: pointerDown || hovering || keyboardAim };
+  return { gesture, showAimGuide: pointerDown || hovering || keyboardAim || mouseAim };
 }

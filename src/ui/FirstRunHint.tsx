@@ -133,8 +133,8 @@ export function FirstRunHint({ engine, phase, layout, reduced }: Props) {
         </>
       )}
       {showSwap && (
-        <View style={[styles.swap, { left: Math.max(8, swapCx - 130), top: swapTop }]}>
-          <Text style={styles.swapText}>{desktop ? "CLICK NEXT · X · RIGHT-CLICK TO SWAP" : "TAP NEXT TO SWAP"}</Text>
+        <View style={[styles.swap, { left: Math.max(8, swapCx - 150), top: swapTop - (desktop ? 20 : 0) }]}>
+          <Text style={styles.swapText}>{desktop ? "CLICK NEXT · X · RIGHT-CLICK\nTO SWAP" : "TAP NEXT TO SWAP"}</Text>
           <Text style={styles.arrow}>▼</Text>
         </View>
       )}
@@ -166,17 +166,18 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     textAlign: "center",
   },
-  swap: { position: "absolute", width: 260, alignItems: "center" },
+  swap: { position: "absolute", width: 300, alignItems: "center" },
   swapText: {
     fontFamily: fonts.label,
     fontSize: 14,
     letterSpacing: 1.5,
     color: palette.ink,
     backgroundColor: palette.cyan,
-    borderRadius: 999,
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 4,
     overflow: "hidden",
+    textAlign: "center",
   },
   arrow: { color: palette.cyan, fontSize: 12, marginTop: 2 },
 });
