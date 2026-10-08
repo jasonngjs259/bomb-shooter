@@ -45,6 +45,8 @@ export class ArenaFx {
   private loseT = -99;
   private anims: Anim[] = [];
   private timers: Timer[] = [];
+  private realTimers: Timer[] = [];
+  realT = 0;
   private shakes: { t0: number; amp: number; dur: number }[] = [];
   private readonly offs: (() => void)[] = [];
   private readonly white = color(HEX.white);
@@ -123,14 +125,30 @@ export class ArenaFx {
         else haptics.medium();
       }),
       e.on("shatter", ({ bombs }) => {
-        bombs.slice(0, 6).forEach((b) => {
-          // white pre-flash, a glass ring on the ground, shards
-          this.anim(false, b.x, 0.45, b.z, 0.12, 0.5, 1.0, this.white, 1);
-          this.anim(true, b.x, 0.09, b.z, 0.35, 0.3, 1.1, this.white, 0.8);
-          if (this.opts.debris) for (let i = 0; i < 6; i++) this.debris.spawn(b.x * U, 0.45 * U, b.z * U, 180, colorAt(bombGlow, b.colorIndex));
-          const s = this.project(b.x, 0.9, b.z);
-          this.bus.emit("floatText", { x: s.x, y: s.y, text: "+20", kind: "drop" });
-        });
+        // a long list is the boss ring chain-shatter: each bomb goes at its
+        // own delay (the engine holds it at a negative age until then)
+        const chain = bombs.length > 6;
+        const list = chain ? this.engine.getBombs() : null;
+        let shown = 0;
+        for (const b of bombs) {
+          let delay = 0;
+          if (list) {
+            const sb = list.find((x) => x.id === b.id);
+            delay = sb && sb.age < 0 ? -sb.age : 0;
+          } else if (shown >= 6) break;
+          shown++;
+          this.later(delay, () => {
+            // white pre-flash, a glass ring on the ground, shards
+            this.anim(false, b.x, 0.45, b.z, 0.12, 0.5, chain ? 1.4 : 1.0, this.white, 1);
+            this.anim(true, b.x, 0.09, b.z, 0.35, 0.3, chain ? 1.5 : 1.1, chain ? colorAt(bombGlow, b.colorIndex) : this.white, 0.8);
+            if (chain) this.explode(b, this.n(3), 0, 0.8);
+            else if (this.opts.debris) for (let i = 0; i < 6; i++) this.debris.spawn(b.x * U, 0.45 * U, b.z * U, 180, colorAt(bombGlow, b.colorIndex));
+            if (!chain) {
+              const s = this.project(b.x, 0.9, b.z);
+              this.bus.emit("floatText", { x: s.x, y: s.y, text: "+20", kind: "drop" });
+            }
+          });
+        }
         setTimeout(haptics.rigid, 80);
       }),
       e.on("miss", ({ x, z, deflected }) => {
@@ -166,22 +184,30 @@ export class ArenaFx {
     );
   }
 
-  private n(base: number) {
+  n(base: number) {
     return Math.max(1, Math.round(base * this.opts.particles));
   }
-  private later(delay: number, fn: () => void) {
+  later(delay: number, fn: () => void) {
     this.timers.push({ at: this.t + delay, fn });
   }
-  private anim(ring: boolean, x: number, y: number, z: number, dur: number, r0: number, r1: number, col: Color, a0: number) {
+  // real-time timers (run through hit-stop / slow-mo)
+  laterReal(delay: number, fn: () => void) {
+    this.realTimers.push({ at: this.realT + delay, fn });
+  }
+  anim(ring: boolean, x: number, y: number, z: number, dur: number, r0: number, r1: number, col: Color, a0: number) {
     if (this.anims.length < 160) this.anims.push({ ring, x, y, z, t0: this.t, dur, r0, r1, col, a0 });
   }
-  private shake(amp: number, dur: number) {
+  shake(amp: number, dur: number) {
     if (this.opts.shake) this.shakes.push({ t0: this.t, amp, dur });
   }
   // World-unit particle spawn into the FX space.
-  private spawn(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number,
+  spawn(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number,
     c0: Color, c1: Color, gravity: number, drag = 1) {
     this.particles.spawn({ x: x * U, y: y * U, z: z * U, vx: vx * U, vy: vy * U, vz: vz * U, life, size0: size * U, size1: 0, c0, c1, drag, gravity: gravity * U });
+  }
+
+  spawnDebris(x: number, z: number, speed: number, col: Color) {
+    this.debris.spawn(x * U, 0.45 * U, z * U, speed, col);
   }
 
   explode(b: FxBomb, parts: number, debris: number, size: number) {
@@ -197,7 +223,7 @@ export class ArenaFx {
     for (let i = 0; i < debris; i++) this.debris.spawn(b.x * U, 0.45 * U, b.z * U, 240 * size, gc);
   }
 
-  private lose(x: number, z: number, angle: number, bombId: number) {
+  lose(x: number, z: number, angle: number, bombId: number) {
     this.loseT = this.t;
     this.clock.freeze(150);
     haptics.error();
@@ -227,11 +253,15 @@ export class ArenaFx {
     });
   }
 
+  // boss levels hold the orbit until the core's explosion beat has played
+  winDelay = 0;
   private win() {
     this.clock.slow(0.35, 300);
     this.chaseT = this.t;
     this.avatar().win();
-    this.camera.orbit();
+    if (this.winDelay > 0) this.laterReal(this.winDelay, () => this.camera.orbit());
+    else this.camera.orbit();
+    this.winDelay = 0;
     this.bus.emit("banner", { text: "ARENA CLEAR!", color: HEX.gold, duration: 2200 });
     haptics.success();
     for (let i = 0; i < 5; i++) {
@@ -254,7 +284,7 @@ export class ArenaFx {
   }
 
   reset() {
-    this.anims.length = this.timers.length = this.shakes.length = 0;
+    this.anims.length = this.timers.length = this.shakes.length = this.realTimers.length = 0;
     this.particles.clear();
     this.debris.clear();
     this.bombs.hidden.clear();
@@ -264,8 +294,16 @@ export class ArenaFx {
     this.loseT = this.surgeT = -99;
   }
 
-  update(dt: number) {
+  update(dt: number, realDt = dt) {
     this.t += dt;
+    this.realT += realDt;
+    if (this.realTimers.length) {
+      const rd = this.realTimers.filter((tm) => tm.at <= this.realT);
+      if (rd.length) {
+        this.realTimers = this.realTimers.filter((tm) => tm.at > this.realT);
+        rd.forEach((tm) => tm.fn());
+      }
+    }
     const t = this.t;
     const due = this.timers.filter((tm) => tm.at <= t);
     if (due.length) {

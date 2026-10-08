@@ -5,6 +5,7 @@
 
 import { BackSide, Mesh, ShaderMaterial, SphereGeometry } from "three";
 import { HEX, srgb } from "../three/palette";
+import { VIGNETTE } from "./Ground";
 
 const VERT = /* glsl */ `
 varying vec3 vDir;
@@ -15,6 +16,7 @@ void main() {
 }`;
 
 const FRAG = /* glsl */ `
+${VIGNETTE}
 uniform float uTime;
 uniform float uStars;
 uniform vec3 cTop, cMid, cHor, cFloor, cSunTop, cSunBot, cGlowA, cGlowB, cStar;
@@ -59,14 +61,15 @@ void main() {
   float hb = h / 0.025;
   float band = exp(-hb * hb) * 0.55;
   col += mix(cGlowA, cGlowB, 0.5 + 0.5 * d.x) * band;
-  gl_FragColor = vec4(col, 1.0);
+  gl_FragColor = vec4(vignette(col), 1.0);
 }`;
 
 export class Sky {
   readonly mesh: Mesh;
   private readonly material: ShaderMaterial;
 
-  constructor() {
+  // vig: the ground's vignette uniforms (one screen-edge glow over both)
+  constructor(vig: Record<string, { value: unknown }> = {}) {
     this.material = new ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -84,6 +87,7 @@ export class Sky {
         cGlowA: { value: srgb(HEX.glowA) },
         cGlowB: { value: srgb(HEX.glowB) },
         cStar: { value: srgb(HEX.star) },
+        ...vig,
       },
     });
     this.mesh = new Mesh(new SphereGeometry(90, 48, 24), this.material);

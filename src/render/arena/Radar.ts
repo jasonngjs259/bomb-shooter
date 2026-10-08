@@ -10,16 +10,21 @@
 //     6+ px (desktop) / 5+ px (phone) incl. outline, bigger when close, pulsing
 //     near the border; bombs beyond range sit on the rim as small dots;
 //   player: a white arrow at the centre with a dark outline.
+// Fun pass (same draw): pickups as diamonds in their kind colour (locked =
+// dim), rollers as hot dots with a white velocity tick ahead, the boss core
+// as a 10 pt disc in its weak colour (red in phase 3) and armed ticking
+// bombs with a blinking red ring.
 // The custom shaders output display (sRGB) colours directly: no lighting,
 // tone mapping, fog or colour-space pass can dim them.
 
 import {
-  BufferAttribute, BufferGeometry, Group, Mesh, MeshBasicMaterial, OrthographicCamera, PlaneGeometry, Points, Scene,
+  BufferAttribute, BufferGeometry, Color, Group, Mesh, MeshBasicMaterial, OrthographicCamera, PlaneGeometry, Points, Scene,
   ShaderMaterial, Shape, ShapeGeometry, SRGBColorSpace, Vector2,
 } from "three";
 import type { ArenaEngine } from "../../game/arena";
 import { DEG } from "../../arena/arenaMath";
-import { bombBase, colorAt } from "../three/palette";
+import { bombBase, bombGlow, colorAt } from "../three/palette";
+import { pickupColor } from "./ArenaSpecials";
 
 const RANGE = 14; // w at the rim
 const MAX_DOTS = 200;
@@ -87,11 +92,14 @@ void main() {
 const DOT_VERT = /* glsl */ `
 attribute vec3 color;
 attribute float size;
+attribute float shape; // 0 disc, 1 diamond, 2 ring
 uniform float uDpr;
 varying vec3 vColor;
 varying float vSize;
+varying float vShape;
 void main() {
   vColor = color;
+  vShape = shape;
   vSize = size * uDpr;
   gl_PointSize = vSize;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
@@ -100,13 +108,21 @@ void main() {
 const DOT_FRAG = /* glsl */ `
 varying vec3 vColor;
 varying float vSize;
+varying float vShape;
 void main() {
-  float r = length(gl_PointCoord - 0.5) * 2.0; // 0 centre .. 1 edge
+  vec2 pc = abs(gl_PointCoord - 0.5) * 2.0;
+  float r = vShape > 0.5 && vShape < 1.5 ? (pc.x + pc.y) : length(gl_PointCoord - 0.5) * 2.0; // 0 centre .. 1 edge
   float px = r * vSize * 0.5;                  // px from the centre
   float rad = vSize * 0.5;
   float alpha = 1.0 - smoothstep(rad - 0.75, rad, px);
   if (alpha <= 0.0) discard;
   float outline = smoothstep(rad - 1.6, rad - 0.9, px); // ~1 px dark ring
+  if (vShape > 1.5) {
+    // ring: a 2 px coloured band inside the dark outline, hollow centre
+    float inner = smoothstep(rad - 3.6, rad - 2.9, px);
+    if (inner <= 0.0) discard;
+    alpha *= inner;
+  }
   gl_FragColor = vec4(mix(vColor, vec3(0.03, 0.01, 0.08), outline), alpha);
 }`;
 
@@ -116,6 +132,8 @@ export class Radar {
   private readonly pos = new Float32Array(MAX_DOTS * 3);
   private readonly col = new Float32Array(MAX_DOTS * 3);
   private readonly size = new Float32Array(MAX_DOTS);
+  private readonly shape = new Float32Array(MAX_DOTS);
+  private readonly tmpC = new Color();
   private readonly dotsGeo = new BufferGeometry();
   private readonly dotsMat: ShaderMaterial;
   private readonly back: ShaderMaterial;
@@ -143,6 +161,7 @@ export class Radar {
     this.dotsGeo.setAttribute("position", new BufferAttribute(this.pos, 3));
     this.dotsGeo.setAttribute("color", new BufferAttribute(this.col, 3));
     this.dotsGeo.setAttribute("size", new BufferAttribute(this.size, 1));
+    this.dotsGeo.setAttribute("shape", new BufferAttribute(this.shape, 1));
     this.dotsMat = new ShaderMaterial({ vertexShader: DOT_VERT, fragmentShader: DOT_FRAG, uniforms: { uDpr: { value: 1 } }, ...common });
     const dots = new Points(this.dotsGeo, this.dotsMat);
     dots.frustumCulled = false;
@@ -197,37 +216,65 @@ export class Radar {
     const cfg = engine.getConfig();
     const pulse = 0.5 + 0.5 * Math.sin(this.t * 9);
     let n = 0;
-    for (const b of engine.getBombs()) {
-      if (b.state !== "idle" || n >= MAX_DOTS) continue;
-      const dx = b.x - s.x, dz = b.z - s.z;
-      // heading-up: screen x = along the right, y = along the facing
+    // heading-up: screen x = along the right, y = along the facing
+    const put = (wx: number, wz: number, px: number, c: Color, shape: number, clampRim: boolean) => {
+      if (n >= MAX_DOTS) return;
+      const dx = wx - s.x, dz = wz - s.z;
       let x = (-dx * fz + dz * fx) / RANGE;
       let y = (dx * fx + dz * fz) / RANGE;
       const d = Math.hypot(x, y);
-      let px = base * ((phone ? 1.1 : 1.25) - (phone ? 0.15 : 0.35) * Math.min(1, d)); // closer = bigger
       if (d > 0.95) {
-        // beyond range: a small dot on the rim
+        if (!clampRim) return;
         x *= 0.95 / d;
         y *= 0.95 / d;
-        px = base * 0.7;
       }
-      const gap = cfg.arenaRadius - (Math.hypot(b.x, b.z) + cfg.bombRadius);
-      if (gap < 1) px *= 1 + 0.35 * pulse * (1 - Math.max(0, gap)); // near the border: pulse
       // the shaders write display (sRGB) values directly, like the HUD chip
-      const c = colorAt(bombBase, b.colorIndex).getRGB(this.rgb, SRGBColorSpace);
+      const rgb = c.getRGB(this.rgb, SRGBColorSpace);
       this.pos[n * 3] = x;
       this.pos[n * 3 + 1] = y;
       this.pos[n * 3 + 2] = 0.02;
-      this.col[n * 3] = c.r;
-      this.col[n * 3 + 1] = c.g;
-      this.col[n * 3 + 2] = c.b;
-      this.size[n] = px + 2; // + the 1 px outline each side (>= 5 px phone, >= 6 desktop)
+      this.col[n * 3] = rgb.r;
+      this.col[n * 3 + 1] = rgb.g;
+      this.col[n * 3 + 2] = rgb.b;
+      this.size[n] = px;
+      this.shape[n] = shape;
       n++;
+    };
+    const ring = Math.floor(this.t * 4) % 2 === 0;
+    for (const b of engine.getBombs()) {
+      if (b.state !== "idle" || n >= MAX_DOTS) continue;
+      const dx = b.x - s.x, dz = b.z - s.z;
+      const d = Math.hypot(dx * fx + dz * fz, -dx * fz + dz * fx) / RANGE;
+      let px = base * ((phone ? 1.1 : 1.25) - (phone ? 0.15 : 0.35) * Math.min(1, d)); // closer = bigger
+      if (d > 0.95) px = base * 0.7; // beyond range: a small dot on the rim
+      const gap = cfg.arenaRadius - (Math.hypot(b.x, b.z) + cfg.bombRadius);
+      if (gap < 1) px *= 1 + 0.35 * pulse * (1 - Math.max(0, gap)); // near the border: pulse
+      put(b.x, b.z, px + 2, colorAt(bombBase, b.colorIndex), 0, true); // + the 1 px outline each side
+      if (b.kind === "ticking" && b.armed && ring) put(b.x, b.z, px + (phone ? 8 : 10), this.tmpC.setRGB(1, 0.18, 0.33), 2, true);
+    }
+    // boss core: a 10 pt disc in the weak colour (danger red in phase 3)
+    const boss = engine.getBoss();
+    if (boss) {
+      const c = boss.phase === 3 ? this.tmpC.setRGB(1, 0.18, 0.33) : colorAt(bombGlow, boss.weakColor);
+      put(boss.x, boss.z, (phone ? 9 : 12) * (1 + 0.15 * pulse), c, 0, true);
+      for (const sh of boss.shield) if (sh.scale > 0.5) put(sh.x, sh.z, base + 1, colorAt(bombBase, sh.colorIndex), 0, false);
+    }
+    // pickups: diamonds in the kind colour
+    for (const p of engine.getPickups()) {
+      pickupColor(p.kind, this.t, this.tmpC);
+      if (p.locked) this.tmpC.multiplyScalar(0.5);
+      put(p.x, p.z, (phone ? 7 : 9) * (p.state === "blinking" && ring ? 0.75 : 1), this.tmpC, 1, true);
+    }
+    // rollers: hot dot + a white velocity tick ahead of it
+    for (const r of engine.getRollers()) {
+      put(r.x, r.z, base * 1.4 + 2, colorAt(bombBase, r.colorIndex), 0, true);
+      put(r.x + r.dirX * 1.1, r.z + r.dirZ * 1.1, phone ? 3.5 : 4.5, this.tmpC.setRGB(1, 1, 1), 0, false);
     }
     this.dotsGeo.setDrawRange(0, n);
     this.dotsGeo.getAttribute("position").needsUpdate = true;
     this.dotsGeo.getAttribute("color").needsUpdate = true;
     this.dotsGeo.getAttribute("size").needsUpdate = true;
+    this.dotsGeo.getAttribute("shape").needsUpdate = true;
   }
 
   dispose() {

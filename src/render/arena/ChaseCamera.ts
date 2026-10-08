@@ -8,6 +8,11 @@
 // Plus a horizontal-locked FOV, danger pull-back with hysteresis, the 2.8 s
 // top-down intro sweep, the game-over crane and the win orbit. Shake is
 // applied to the camera only.
+// Fun pass: the follow springs stiffen x1.5 during a dodge roll (spec 8 ->
+// 12), slow-mo / hit-stop narrows the FOV (the moment reads as a zoom), the
+// boss intro sweeps past the core on its way down, and a boss kill gets a
+// 1.5 s beat: the camera rises and turns towards the core while it implodes
+// and blows, then the win orbit takes over.
 
 import { CatmullRomCurve3, PerspectiveCamera, Vector3 } from "three";
 import {
@@ -55,6 +60,12 @@ export class ChaseCamera {
   still = false;
   mouse = false; // the last turn input was the mouse (rigid yaw)
   fwdSpeed = 0; // shooter velocity along the camera heading, w/s (FOV kick)
+  rolling = false; // dodge roll: stiffer follow
+  timeScale = 1; // engine slow-mo scale (FOV zoom)
+  bossAt: { x: number; z: number } | null = null; // boss core (intro sweep passes it)
+  private beatT = -1; // s into the boss-kill beat (-1 = none)
+  private readonly beatAt = new Vector3();
+  private zoom = 0;
 
   startIntro(still: boolean) {
     this.mode = "intro";
@@ -84,9 +95,16 @@ export class ChaseCamera {
   orbit() {
     this.mode = "orbit";
     this.t = 0;
+    this.beatT = -1;
+  }
+  // Boss kill: look at the core (x, z) for 1.5 s.
+  bossBeat(x: number, z: number) {
+    this.beatT = 0;
+    this.beatAt.set(x, 1.2, z);
   }
   chase() {
     this.mode = "chase";
+    this.beatT = -1;
   }
 
   // px, pz, yaw: stickman feet + facing. danger: engine level; rearDanger:
@@ -151,16 +169,23 @@ export class ChaseCamera {
         this.springsLive = false;
         return;
       }
+      const boss = this.bossAt;
       if (!this.curve) {
         const back = { x: px - Math.cos(yaw) * 10, z: pz - Math.sin(yaw) * 10 };
-        this.curve = new CatmullRomCurve3([
-          new Vector3(0, 34, 0.01), new Vector3(back.x, 12, back.z), new Vector3(want.x, want.y, want.z),
-        ]);
+        // boss level: swing past the core (outside it, low) on the way down
+        const mid = boss
+          ? new Vector3(boss.x * 0.55 - boss.z * 0.25, 7, boss.z * 0.55 + boss.x * 0.25)
+          : new Vector3(back.x, 12, back.z);
+        this.curve = new CatmullRomCurve3([new Vector3(0, 34, 0.01), mid, new Vector3(want.x, want.y, want.z)]);
       }
       const k = easeInOutCubic(clamp01((t - 1.2) / 1.2));
       this.curve.points[2].copy(want);
       this.curve.getPoint(k, this.pos);
-      this.look.set(lookX * k, lookY * k, lookZ * k);
+      if (boss) {
+        // look at the core first, then hand over to the player
+        const w = easeInOutCubic(clamp01((k - 0.45) / 0.55));
+        this.look.set(boss.x + (lookX - boss.x) * w, 1.3 + (lookY - 1.3) * w, boss.z + (lookZ - boss.z) * w);
+      } else this.look.set(lookX * k, lookY * k, lookZ * k);
       cam.up.set(0, 1, 0);
       cam.position.copy(this.pos);
       cam.lookAt(this.look);
@@ -195,20 +220,36 @@ export class ChaseCamera {
       want.set(px + Math.cos(a) * 4.5, 2.0, pz + Math.sin(a) * 4.5);
       lookX = px; lookY = 1.1; lookZ = pz;
     }
+    if (this.mode === "chase" && this.beatT >= 0) {
+      this.beatT += dt;
+      // rise + pull back, look 60% of the way to the core, ease out after 1.2 s
+      const w = this.beatT < 1.2 ? easeInOutCubic(clamp01(this.beatT / 0.35)) : 1 - easeInOutCubic(clamp01((this.beatT - 1.2) / 0.3));
+      want.y += 1.6 * w;
+      want.x -= Math.cos(this.yaw) * 1.5 * w;
+      want.z -= Math.sin(this.yaw) * 1.5 * w;
+      lookX += (this.beatAt.x * 0.6 + lookX * 0.4 - lookX) * w;
+      lookY += (this.beatAt.y - lookY) * w;
+      lookZ += (this.beatAt.z * 0.6 + lookZ * 0.4 - lookZ) * w;
+      if (this.beatT > 1.5) this.beatT = -1;
+    }
     if (this.mode === "chase") {
-      this.follow(want, lookX, lookY, lookZ, dt);
+      this.follow(want, lookX, lookY, lookZ, dt, this.rolling || this.beatT >= 0 ? 1.5 : 1);
       // FOV kick: running flat out along the view for 300 ms
       this.kickHold = this.fwdSpeed > 2.7 ? this.kickHold + dt : 0;
       const kickOn = this.kickHold >= 0.3 && !this.still;
       this.kick = expDamp(this.kick, kickOn ? 1 : 0, kickOn ? 4 : 6, dt);
       vfov += FOV_KICK * this.kick;
     } else {
+      this.beatT = -1;
       const s = this.mode === "orbit" ? 1 : smooth(8, dt);
       this.pos.lerp(want, s);
       this.look.set(lookX, lookY, lookZ);
       this.springsLive = false;
       this.kick = 0;
     }
+    // slow-mo / hit-stop: a zoom-in (scale 0.3 -> ~-5 deg)
+    this.zoom = expDamp(this.zoom, this.still ? 0 : (1 - Math.min(1, this.timeScale)) * 7, this.timeScale < 1 ? 18 : 5, dt);
+    vfov -= this.zoom;
     cam.position.set(this.pos.x + shakeX, this.pos.y + shakeY, this.pos.z);
     cam.lookAt(this.look);
     if (Math.abs(cam.fov - vfov) > 0.005 || cam.near !== 0.05) {
@@ -221,7 +262,7 @@ export class ChaseCamera {
 
   // Position springs in the camera yaw frame (f = heading, r = right) and a
   // look-target spring; the state stays in world space between frames.
-  private follow(want: Vector3, lx: number, ly: number, lz: number, dt: number) {
+  private follow(want: Vector3, lx: number, ly: number, lz: number, dt: number, stiff = 1) {
     const fx = Math.cos(this.yaw), fz = Math.sin(this.yaw);
     const rx = -fz, rz = fx;
     if (!this.springsLive) {
@@ -240,15 +281,15 @@ export class ChaseCamera {
     this.sY.x = p.y;
     const wF = want.x * fx + want.z * fz;
     const wR = want.x * rx + want.z * rz;
-    cdStep(this.sF, wF, CAM_OMEGA.forward, dt);
+    cdStep(this.sF, wF, CAM_OMEGA.forward * stiff, dt);
     // backpedalling: never let the lag bring the camera closer than
     // FWD_CLOSE (the feet would leave the bottom of the frame)
     if (this.sF.x > wF + FWD_CLOSE) {
       this.sF.x = wF + FWD_CLOSE;
       this.sF.v = Math.min(0, this.sF.v);
     }
-    cdStep(this.sR, wR, CAM_OMEGA.lateral, dt);
-    cdStep(this.sY, want.y, CAM_OMEGA.height, dt);
+    cdStep(this.sR, wR, CAM_OMEGA.lateral * stiff, dt);
+    cdStep(this.sY, want.y, CAM_OMEGA.height * stiff, dt);
     if (Math.abs(this.sR.x - wR) > LATERAL_MAX) {
       this.sR.x = wR + Math.sign(this.sR.x - wR) * LATERAL_MAX;
       this.sR.v = 0;

@@ -3,10 +3,15 @@
 // border = kill zone, distance fog), the arena disc with guide rings and a
 // hex emblem, the neon border line + halo, and the 16-sector ground danger
 // ring just outside the border. All units are world units (w).
+// Fun pass (0 extra draws, uniforms only): Freeze frosts the grid + border,
+// FEVER cycles the grid / border through the bomb glows, a lurch or a
+// player hit flashes the border red, and the screen-edge vignette (fever
+// magenta -> gold pulsing on the beat, freeze frost, red flashes) is drawn
+// by the ground and sky shaders from gl_FragCoord (see VIGNETTE).
 
 import {
   AdditiveBlending, Color, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, PlaneGeometry, RingGeometry,
-  ShaderMaterial, TorusGeometry, Vector3,
+  ShaderMaterial, TorusGeometry, Vector2, Vector3,
 } from "three";
 import { HEX, srgb } from "../three/palette";
 
@@ -18,7 +23,29 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
 
+// Screen-edge glow from gl_FragCoord (shared by the ground and sky shaders,
+// which together cover every screen edge): bottom colour A -> top colour B.
+export const VIGNETTE = /* glsl */ `
+uniform vec2 uRes;
+uniform vec3 uVigA;
+uniform vec3 uVigB;
+uniform float uVig;
+vec3 vignette(vec3 col) {
+  if (uVig <= 0.001) return col;
+  vec2 sp = gl_FragCoord.xy / uRes;
+  vec2 q = abs(sp - 0.5) * 2.0;
+  float e = max(pow(q.x, 3.2), pow(q.y, 2.4));
+  return col + mix(uVigA, uVigB, sp.y) * e * uVig;
+}`;
+
+export const vignetteUniforms = () => ({
+  uRes: { value: new Vector2(1, 1) }, uVigA: { value: new Vector3() }, uVigB: { value: new Vector3() }, uVig: { value: 0 },
+});
+
 const GROUND_FRAG = /* glsl */ `
+${VIGNETTE}
+uniform vec3 uGridTint;
+uniform float uGridTintK;
 uniform vec3 uPlayer;
 uniform float uArenaR;
 uniform float uPulse;
@@ -33,11 +60,13 @@ void main() {
   float near = uLow > 0.5 ? 0.5 : 1.0 - smoothstep(3.0, 28.0, length(p - uPlayer.xz));
   float r = length(p);
   float outside = step(uArenaR, r);
-  vec3 col = cFloor + mix(cFar, cNear, near) * line * mix(0.15, 0.6, near) * uPulse * mix(1.0, 0.7, outside);
+  vec3 nearC = mix(cNear, uGridTint, uGridTintK);
+  vec3 col = cFloor + mix(cFar, nearC, near) * line * mix(0.15, 0.6, near) * uPulse * mix(1.0, 0.7, outside);
+  col = mix(col, col + uGridTint * 0.05, uGridTintK);
   col += cDanger * 0.05 * outside * (1.0 - smoothstep(uArenaR, 18.0, r));
   float fd = length(vWorld - cameraPosition);
   col = mix(col, cFog, smoothstep(20.0, 55.0, fd));
-  gl_FragColor = vec4(col, 1.0);
+  gl_FragColor = vec4(vignette(col), 1.0);
 }`;
 
 // Ring of 16 danger sectors; colour gold (0.4) -> red (>= 0.7), alpha
@@ -121,6 +150,8 @@ export class Ground {
   private readonly white = new Color(1, 1, 1);
   private readonly tmp = new Color();
   private readonly meshes: Mesh[] = [];
+  readonly vig = vignetteUniforms(); // shared with the sky
+  private readonly ice = new Color("#CFF4FF");
 
   constructor(arenaR: number) {
     const add = (m: Mesh) => {
@@ -135,6 +166,8 @@ export class Ground {
         uPlayer: { value: new Vector3() }, uArenaR: { value: arenaR }, uPulse: { value: 1 }, uLow: { value: 0 },
         cNear: { value: srgb(HEX.gridNear) }, cFar: { value: srgb(HEX.gridFar) }, cFloor: { value: srgb(HEX.bgFloor) },
         cDanger: { value: srgb(HEX.danger) }, cFog: { value: srgb(HEX.bgMid) },
+        uGridTint: { value: new Vector3() }, uGridTintK: { value: 0 },
+        ...this.vig,
       },
     });
     add(new Mesh(flat(new PlaneGeometry(120, 120)), this.ground)).renderOrder = -50;
@@ -169,6 +202,7 @@ export class Ground {
   update(o: {
     time: number; danger: number; sectors: readonly number[]; playerX: number; playerZ: number; low: boolean;
     pulse: number; flash: number; surge: number; chase: Color | null;
+    ice: number; fever: number; feverColor: Color; red: number;
   }) {
     const u = this.ground.uniforms;
     (u.uPlayer.value as Vector3).set(o.playerX, 0, o.playerZ);
@@ -183,11 +217,18 @@ export class Ground {
     this.tmp.copy(this.cyan).lerp(this.red, Math.min(1, Math.max(0, (o.danger - 0.5) / 0.5)));
     if (o.chase) this.tmp.copy(o.chase);
     if (o.surge > 0) this.tmp.lerp(this.gold, o.surge);
+    if (o.fever > 0) this.tmp.lerp(o.feverColor, o.fever * 0.85);
+    if (o.ice > 0) this.tmp.lerp(this.ice, o.ice * 0.8);
+    if (o.red > 0) this.tmp.lerp(this.red, o.red);
     if (o.flash > 0) this.tmp.copy(this.red).lerp(this.white, o.flash);
+    const gt = u.uGridTint.value as Vector3;
+    if (o.ice >= o.fever) gt.set(0.81 * o.ice, 0.96 * o.ice, o.ice);
+    else gt.set(o.feverColor.r, o.feverColor.g, o.feverColor.b);
+    u.uGridTintK.value = Math.max(o.ice * 0.8, o.fever * 0.55);
     this.border.color.copy(this.tmp);
     this.border.opacity = alpha;
     (this.halo.uniforms.uColor.value as Color).copy(this.tmp);
-    this.halo.uniforms.uAlpha.value = 0.45 * alpha + 0.4 * Math.max(o.flash, o.surge);
+    this.halo.uniforms.uAlpha.value = 0.45 * alpha + 0.4 * Math.max(o.flash, o.surge, o.red) + 0.25 * o.fever;
   }
 
   dispose() {
