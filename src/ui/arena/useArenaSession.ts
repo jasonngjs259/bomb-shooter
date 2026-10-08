@@ -1,13 +1,17 @@
 // Arena 360 session bookkeeping: end-of-game result, the end card timing
 // (card at 2.6 s after the lose/win sequence starts, buttons armed 1.5 s
-// later), best score (its own storage key), biggest combo and the
-// "bs.arenaPlayed" flag that hides the title's NEW badge.
+// later), best score (its own storage key), biggest combo, the
+// "bs.arenaPlayed" flag that hides the title's NEW badge, and the level
+// progress: levelStars -> stars / bests / unlocks (bs.arena.progress).
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArenaEngine } from "../../game/arena";
+import { SkinItem, skinItem } from "../../game/arena/skins";
+import { applyLevelStars, reachLevel } from "../../storage/arenaProgress";
 import { ARENA_BEST_KEY, loadBestScore, saveBestScore } from "../../storage/bestScore";
-import { ARM_MS } from "./ArenaEndCard";
+import { getProgress, setProgress } from "../../storage/progressStore";
+import { ARM_MS, EndStars } from "./ArenaEndCard";
 
 export const ARENA_PLAYED_KEY = "bs.arenaPlayed";
 
@@ -15,6 +19,8 @@ export interface ArenaResult { won: boolean; score: number; level: number; time:
 
 export function useArenaSession(engine: ArenaEngine, still: boolean) {
   const [result, setResult] = useState<ArenaResult | null>(null);
+  const [stars, setStars] = useState<EndStars | null>(null);
+  const [unlocks, setUnlocks] = useState<SkinItem[]>([]);
   const [visible, setVisible] = useState(false);
   const [armed, setArmed] = useState(false);
   const [best, setBest] = useState(0);
@@ -39,12 +45,20 @@ export function useArenaSession(engine: ArenaEngine, still: boolean) {
         void saveBestScore(score, ARENA_BEST_KEY);
       }
       AsyncStorage.setItem(ARENA_PLAYED_KEY, "1").catch(() => undefined);
-      setResult({ won, score, level: engine.getLevel(), time: engine.getTime(), combo: combo.current });
+      if (!won) setProgress(reachLevel(getProgress(), engine.getLevel()));
+      setResult({ won, score, level: engine.getLevel(), time: engine.getTime(), combo: Math.max(combo.current, engine.getBestCombo()) });
     };
     const offs = [
       engine.on("pop", ({ combo: c }) => (combo.current = Math.max(combo.current, c))),
       engine.on("gameOver", () => end(false)),
       engine.on("won", () => end(true)),
+      engine.on("levelStars", (ev) => {
+        const r = applyLevelStars(getProgress(), ev, engine.getScore());
+        setProgress(r.progress);
+        // newBest from the stored record (robust even if the engine's `best` was missing)
+        setStars({ clear: ev.clear, fast: ev.fast, flawless: ev.flawless, time: ev.time, par: ev.par, bestCombo: ev.bestCombo, newBest: r.newBest });
+        setUnlocks(r.newlyUnlocked.map(skinItem).filter((x): x is SkinItem => !!x));
+      }),
     ];
     return () => {
       alive = false;
@@ -64,11 +78,13 @@ export function useArenaSession(engine: ArenaEngine, still: boolean) {
 
   const reset = useCallback((keepCombo = false) => {
     setResult(null);
+    setStars(null);
+    setUnlocks([]);
     setVisible(false);
     setArmed(false);
     setIsNewBest(false);
     if (!keepCombo) combo.current = 0;
   }, []);
 
-  return { result, visible, armed, best, isNewBest, reset };
+  return { result, stars, unlocks, visible, armed, best, isNewBest, reset };
 }

@@ -7,6 +7,7 @@ import { useSyncExternalStore } from "react";
 import { AccessibilityInfo } from "react-native";
 
 export type FxQuality = "high" | "low";
+export type RollKey = "space" | "shift"; // Arena desktop: which key rolls (L5+)
 
 export interface Settings {
   haptics: boolean;
@@ -19,6 +20,8 @@ export interface Settings {
   music: boolean; // music on/off
   sfx: boolean; // sound effects on/off
   volume: number; // master volume 0..1
+  tips: boolean; // Arena one-time feature tips (and the L5 roll tutorial)
+  rollKey: RollKey; // "shift": Space keeps FIRE, Shift rolls (and no longer swaps)
 }
 
 export const SENSITIVITY_MIN = 0.001;
@@ -36,6 +39,8 @@ let state: Settings = {
   music: true,
   sfx: true,
   volume: 0.8,
+  tips: true,
+  rollKey: "space",
 };
 const listeners = new Set<() => void>();
 
@@ -49,10 +54,10 @@ export function updateSettings(patch: Partial<Settings>, persist = true) {
   state = { ...state, ...patch };
   emit();
   if (persist) {
-    const { haptics, colourAssist, reduceMotionOverride, mouseSensitivity, aimAssist, music, sfx, volume } = state;
+    const { haptics, colourAssist, reduceMotionOverride, mouseSensitivity, aimAssist, music, sfx, volume, tips, rollKey } = state;
     AsyncStorage.setItem(
       KEY,
-      JSON.stringify({ haptics, colourAssist, reduceMotionOverride, mouseSensitivity, aimAssist, music, sfx, volume })
+      JSON.stringify({ haptics, colourAssist, reduceMotionOverride, mouseSensitivity, aimAssist, music, sfx, volume, tips, rollKey })
     ).catch(
       () => undefined
     );
@@ -99,6 +104,8 @@ export function initSettings() {
           music: saved.music ?? state.music,
           sfx: saved.sfx ?? state.sfx,
           volume: Math.min(1, Math.max(0, saved.volume ?? state.volume)),
+          tips: saved.tips ?? state.tips,
+          rollKey: saved.rollKey === "shift" ? "shift" : "space",
         },
         false
       );

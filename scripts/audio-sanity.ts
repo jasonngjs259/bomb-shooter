@@ -5,7 +5,7 @@
 // ducking, danger hysteresis, combo notes, suspend / resume, the web unlock
 // flow (silent until the first gesture, then play/pause warm-up of every
 // player and the music starts) and the engine event maps (real ArenaEngine;
-// fun-feature events tolerant when missing, mapped when emitted).
+// the full fun-feature map is in scripts/arena-fun-audio.ts).
 // Run: npx tsx --tsconfig scripts/smoke/tsconfig.json scripts/audio-sanity.ts
 
 import { AudioManager } from "../src/audio/AudioManager";
@@ -412,28 +412,21 @@ section("engine event maps");
   }
   const shootPlays = byFile(h, "sfx_bomb_shoot").reduce((n, p) => n + p.plays, 0);
   ok(shootPlays > 0, `arena shoot events play the shot (${shootPlays} for ${shots} fires)`);
-  // fun events: tolerant (the engine has none yet) and mapped when emitted
-  const fake = new TypedEmitter<Record<string, unknown>>();
+  // fun events through the real engine (full map: scripts/arena-fun-audio.ts)
+  const e2 = new ArenaEngine({ random: mulberry(9) });
   const st2 = newArenaAudioState();
-  const offFake = bindFunEvents(fake, h.a, st2);
-  fake.emit("feverStart", { duration: 8 });
+  const offFun = bindFunEvents(e2, h.a, st2);
+  e2.newGame({ level: 2 });
+  e2.debugSetFever(100);
+  e2.update(1 / 30);
   ok(st2.fever && h.a.music.state.fever, "feverStart -> fever music");
   h.t.now += 100;
-  fake.emit("pickupCollected", { id: 1, kind: "mega" });
+  e2.debugSpawnPickup("mega", e2.getShooter().x, e2.getShooter().z);
+  e2.update(1 / 30);
   ok(near(byFile(h, "sfx_pickup_collect")[0].rate, 0.79), "pickupCollected rate per kind");
-  fake.emit("rollerLaunched", { id: 1, x: 0, z: 0 });
-  h.step(200);
-  ok(byFile(h, "sfx_roller_loop")[0].playing, "roller loop on while a roller is live");
-  fake.emit("rollerDestroyed", { id: 1 });
-  h.step(300);
-  ok(!byFile(h, "sfx_roller_loop")[0].playing, "roller loop off when none left");
-  fake.emit("levelStars", { count: 3 });
-  h.step(3500);
-  ok(["sfx_star_1", "sfx_star_2", "sfx_star_3"].every((f) => byFile(h, f)[0].plays >= 1), "levelStars -> 3 staggered stars");
-  fake.emit("feverEnd", {});
+  for (let i = 0; i < 300 && h.a.music.state.fever; i++) e2.update(1 / 30);
   ok(!h.a.music.state.fever, "feverEnd -> fever music off");
-  ok(bindFunEvents({}, h.a, st2)() === undefined, "engine without on(): no-op");
-  offFake();
+  offFun();
   offA();
   offF();
 

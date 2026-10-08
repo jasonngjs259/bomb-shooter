@@ -32,7 +32,8 @@ export function titleLayout(w: number, h: number): TitleLayout {
   const tagLines = w < 480 ? 2 : 1;
   const tagY = subY + fontSize * 0.44;
   const tagBottom = tagY + tagLines * TAG_LINE_H + TAG_PAD;
-  const playY = h * (desktop ? 0.76 : 0.75);
+  // the mode stack (ARENA / HANGAR / CLASSIC + BEST) needs ~172pt below playY on phones
+  const playY = desktop ? h * 0.76 : Math.max(h * 0.62, Math.min(h * 0.75, h - 172));
   const playTop = playY - (desktop ? 72 : 76); // top of the mode buttons
   // Pile: preferred size, shrunk if the gap between tagline and PLAY is short.
   const wanted = desktop ? 64 : Math.max(34, Math.min(56, w * 0.105));

@@ -59,4 +59,4 @@ export function uiSound(kind: UiSound = "click") {
 }
 
 export { bindArenaAudio, bindClassicAudio, newArenaAudioState } from "./sfxMap";
-export { bindFunEvents } from "./funEvents";
+export { bindFunEvents, swapOrDeny, uiFunSounds } from "./funEvents";

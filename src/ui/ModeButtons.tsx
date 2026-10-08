@@ -3,7 +3,8 @@
 // 280x64 / 280x56 buttons + a BEST line; desktop: two 300x132 cards with a
 // subtitle and BEST, plus the key hint. The selected mode (last played by
 // default) gets the focus ring; Left/Right, 1/2 and Enter are handled by
-// GameScreen.
+// GameScreen. HANGAR (fun pass: skins + level select, H key) is a 280x48
+// secondary button under the ARENA 360 button / card.
 
 import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useRef } from "react";
@@ -24,6 +25,26 @@ interface Props {
   still: boolean;
   onPlay: (mode: GameMode) => void;
   onSelect: (mode: GameMode) => void;
+  onHangar: () => void;
+  stars: number; // Arena stars earned (shown on HANGAR)
+}
+
+function HangarButton({ onPress, stars }: { onPress: () => void; stars: number }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Hangar: skins and level select, ${stars} stars`}
+      onPress={() => {
+        uiSound("click");
+        onPress();
+      }}
+      onHoverIn={() => uiSound("hover")}
+      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [styles.hangar, hovered && styles.hangarHover, pressed && styles.pressed]}
+    >
+      <Text style={styles.hangarText}>HANGAR</Text>
+      {stars > 0 && <Text style={styles.hangarStars}>★ {stars}</Text>}
+    </Pressable>
+  );
 }
 
 function OrbitIcon({ color }: { color: string }) {
@@ -59,7 +80,7 @@ function NewBadge({ still }: { still: boolean }) {
   );
 }
 
-export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassic, still, onPlay, onSelect }: Props) {
+export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassic, still, onPlay, onSelect, onHangar, stars }: Props) {
   const item = (mode: GameMode) => {
     const arena = mode === "arena";
     const focus = selected === mode;
@@ -103,12 +124,23 @@ export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassi
   };
   return (
     <View style={styles.wrap}>
-      <View style={desktop ? styles.rowDesktop : styles.colPhone}>
-        {item("arena")}
-        {item("classic")}
-      </View>
       {desktop ? (
-        <Text style={styles.hint}>← / → CHOOSE · ENTER PLAY · 1 / 2</Text>
+        <View style={styles.rowDesktop}>
+          <View style={styles.colArena}>
+            {item("arena")}
+            <HangarButton onPress={onHangar} stars={stars} />
+          </View>
+          {item("classic")}
+        </View>
+      ) : (
+        <View style={styles.colPhone}>
+          {item("arena")}
+          <HangarButton onPress={onHangar} stars={stars} />
+          {item("classic")}
+        </View>
+      )}
+      {desktop ? (
+        <Text style={styles.hint}>← / → CHOOSE · ENTER PLAY · 1 / 2 · H HANGAR</Text>
       ) : (
         (bestArena > 0 || bestClassic > 0) && (
           <Text style={styles.best}>
@@ -122,8 +154,16 @@ export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassi
 
 const styles = StyleSheet.create({
   wrap: { alignItems: "center", gap: 12 },
-  colPhone: { alignItems: "center", gap: 16 },
-  rowDesktop: { flexDirection: "row", gap: 24 },
+  colPhone: { alignItems: "center", gap: 12 },
+  rowDesktop: { flexDirection: "row", gap: 24, alignItems: "flex-start" },
+  colArena: { alignItems: "center", gap: 12 },
+  hangar: {
+    width: 280, maxWidth: "100%", height: 48, borderRadius: 24, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(22, 10, 51, 0.88)", borderWidth: 1.5, borderColor: palette.magenta, cursor: "pointer",
+  },
+  hangarHover: { borderColor: palette.textPrimary },
+  hangarText: { fontFamily: fonts.button, fontSize: 18, letterSpacing: 2, color: palette.textPrimary },
+  hangarStars: { fontFamily: fonts.score, fontSize: 13, color: palette.gold },
   primary: { width: 280, maxWidth: "100%", height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", cursor: "pointer" },
   secondary: { width: 280, maxWidth: "100%", height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", cursor: "pointer" },
   secondaryFill: { backgroundColor: palette.panelSolid, borderWidth: 2, borderColor: palette.cyan },

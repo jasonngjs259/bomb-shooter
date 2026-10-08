@@ -14,10 +14,13 @@ import { initAudio } from "./src/audio";
 import { astronautBytes } from "./src/render/arena/character/astronautAsset";
 import { ArenaScreen } from "./src/ui/arena/ArenaScreen";
 import { GameScreen } from "./src/ui/GameScreen";
+import { initProgress } from "./src/storage/progressStore";
 import { initSettings } from "./src/ui/settings";
 import { palette } from "./src/ui/theme";
 
 initSettings();
+// Arena progress (stars, unlocks, equipped skin, seen tips) loads in the background.
+void initProgress();
 // Audio players are created once here (web: silent until the first tap / key).
 initAudio();
 // Fetch the Arena character model in the background from app start, so it is
@@ -42,6 +45,8 @@ export default function App() {
   // "Play Classic" from Arena's 3D-unavailable card starts a Classic game
   // right away (2D fallback) instead of landing on the title
   const [classicNow, setClassicNow] = useState(false);
+  // HANGAR LEVELS pick: Arena starts at this level (score 0); PLAY = level 1
+  const [arenaLevel, setArenaLevel] = useState(1);
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -50,14 +55,16 @@ export default function App() {
         {ready && mode === "classic" && (
           <GameScreen
             autoStart={classicNow}
-            onArena={() => {
+            onArena={(level) => {
               setClassicNow(false);
+              setArenaLevel(level ?? 1);
               setMode("arena");
             }}
           />
         )}
         {ready && mode === "arena" && (
           <ArenaScreen
+            startLevel={arenaLevel}
             onExit={() => setMode("classic")}
             onClassic={() => {
               setClassicNow(true);

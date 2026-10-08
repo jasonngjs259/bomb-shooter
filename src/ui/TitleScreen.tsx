@@ -32,6 +32,8 @@ interface Props {
   topInset: number;
   onPlay: (mode: GameMode) => void;
   onSettings: () => void;
+  onHangar: () => void;
+  stars: number;
 }
 
 function GearGlyph() {
@@ -46,7 +48,7 @@ function GearGlyph() {
 }
 
 export function TitleScreen({
-  width, height, best, bestArena, arenaNew, selected, onSelect, still, detonating, topInset, onPlay, onSettings,
+  width, height, best, bestArena, arenaNew, selected, onSelect, still, detonating, topInset, onPlay, onSettings, onHangar, stars,
 }: Props) {
   const tl = titleLayout(width, height);
   const logo = useRef(new Animated.Value(0)).current;
@@ -114,7 +116,7 @@ export function TitleScreen({
       >
         <ModeButtons
           desktop={tl.desktop} selected={selected} arenaNew={arenaNew} bestArena={bestArena} bestClassic={best} still={still}
-          onPlay={onPlay} onSelect={onSelect}
+          onPlay={onPlay} onSelect={onSelect} onHangar={onHangar} stars={stars}
         />
       </Animated.View>
 

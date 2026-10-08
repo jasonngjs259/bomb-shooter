@@ -4,7 +4,9 @@
 // engine phase plus a UI-only "menu" flag (back to title from the end card /
 // pause). Choosing ARENA 360 detonates the logo bomb, then hands over to
 // the App (onArena). Keyboard restart from the end card waits for the
-// card's buttons to arm (same 1.5 s rule as clicking).
+// card's buttons to arm (same 1.5 s rule as clicking). The HANGAR (Arena
+// skins + level select) opens over the title; a LEVELS pick detonates the
+// logo the same way and starts Arena at that level.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,7 +26,10 @@ import { ARM_MS } from "./arena/ArenaEndCard";
 import { computeGameLayout } from "./gameLayout";
 import { GameOverOverlay } from "./GameOverOverlay";
 import { HudBar, HudSide } from "./Hud";
+import { ArenaPauseExtras } from "./arena/ArenaPauseExtras";
+import { Hangar } from "./Hangar";
 import { GameMode } from "./ModeButtons";
+import { useProgress } from "../storage/progressStore";
 import { lockPortrait } from "./orientation";
 import { PauseMenu } from "./PauseMenu";
 import { RendererNotice } from "./RendererNotice";
@@ -36,10 +41,12 @@ import { TutorialHint } from "./TutorialHint";
 import { useBestScore } from "./useBestScore";
 
 const PLAYING = new Set(["ready", "shooting", "resolving"]);
+const finePointer = () =>
+  Platform.OS === "web" && typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
 
 const LAST_MODE_KEY = "bs.lastMode";
 
-export function GameScreen({ onArena, autoStart = false }: { onArena: () => void; autoStart?: boolean }) {
+export function GameScreen({ onArena, autoStart = false }: { onArena: (level?: number) => void; autoStart?: boolean }) {
   const { engine, frame } = useGameEngine();
   const insets = useSafeAreaInsets();
   const win = useWindowDimensions();
@@ -61,6 +68,11 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
   const [arenaNew, setArenaNew] = useState(false);
   const [bestArena, setBestArena] = useState(0);
   const pendingMode = useRef<GameMode>("classic");
+  const pendingLevel = useRef<number | undefined>(undefined);
+  const [hangarOpen, setHangarOpen] = useState(false);
+  const hangarRef = useRef(false);
+  hangarRef.current = hangarOpen;
+  const progress = useProgress();
   const biggestCombo = useRef(0);
   const menuRef = useRef(menu);
   menuRef.current = menu;
@@ -121,7 +133,7 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
     detonatingRef.current = false;
     AsyncStorage.setItem(LAST_MODE_KEY, pendingMode.current).catch(() => undefined);
     if (pendingMode.current === "arena") {
-      onArena();
+      onArena(pendingLevel.current);
       return;
     }
     engine.newGame();
@@ -150,10 +162,20 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
       engine.newGame();
     }
   }, [engine]);
-  const onStartKey = useCallback(() => startGame(), [startGame]);
+  const onStartKey = useCallback(() => {
+    if (!hangarRef.current) startGame();
+  }, [startGame]);
+  const startArenaLevel = useCallback(
+    (level: number) => {
+      setHangarOpen(false);
+      pendingLevel.current = level;
+      startGame("arena");
+    },
+    [startGame]
+  );
   // no mouse aiming under the pause / settings / title menus
   const aimBlocked = useRef(false);
-  aimBlocked.current = paused || settingsOpen || menu;
+  aimBlocked.current = paused || settingsOpen || menu || hangarOpen;
   const isAimBlocked = useCallback(() => aimBlocked.current, []);
   const { gesture, showAimGuide } = useAimInput({ engine, layout, screenToBoard, onStart: onStartKey, blocked: isAimBlocked });
 
@@ -162,7 +184,9 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
     if (Platform.OS !== "web" || typeof window === "undefined") return;
     const onKey = (e: KeyboardEvent) => {
       if (engine.getPhase() !== "title" && !menuRef.current) return;
-      if (e.code === "ArrowLeft" || e.code === "ArrowRight") setSelected((m) => (m === "arena" ? "classic" : "arena"));
+      if (hangarRef.current) return;
+      if (e.code === "KeyH") setHangarOpen(true);
+      else if (e.code === "ArrowLeft" || e.code === "ArrowRight") setSelected((m) => (m === "arena" ? "classic" : "arena"));
       else if (e.code === "Digit1" || e.code === "Numpad1") startGame("arena");
       else if (e.code === "Digit2" || e.code === "Numpad2") startGame("classic");
     };
@@ -288,8 +312,19 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
           still={still}
           detonating={detonating}
           topInset={insets.top}
-          onPlay={startGame}
+          onPlay={(mode) => {
+            pendingLevel.current = undefined;
+            startGame(mode);
+          }}
           onSettings={() => setSettingsOpen(true)}
+          onHangar={() => setHangarOpen(true)}
+          stars={progress.totalStars}
+        />
+      )}
+      {showTitle && hangarOpen && !detonating && (
+        <Hangar
+          width={W} height={H} topInset={insets.top} bottomInset={insets.bottom}
+          onBack={() => setHangarOpen(false)} onStartLevel={startArenaLevel}
         />
       )}
       {!showTitle && endVisible && (phase === "gameOver" || phase === "won") && (
@@ -308,7 +343,11 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
       {paused && playing && !showTitle && (
         <PauseMenu title="PAUSED" onResume={() => setPaused(false)} onRestart={restart} onMenu={toMenu} />
       )}
-      {settingsOpen && showTitle && <PauseMenu title="SETTINGS" onResume={() => setSettingsOpen(false)} />}
+      {settingsOpen && showTitle && (
+        <PauseMenu title="SETTINGS" onResume={() => setSettingsOpen(false)}>
+          <ArenaPauseExtras desktop={finePointer()} />
+        </PauseMenu>
+      )}
       {!paused && !settingsOpen && !endVisible && <RendererNotice bottom={insets.bottom + 6} />}
     </View>
   );

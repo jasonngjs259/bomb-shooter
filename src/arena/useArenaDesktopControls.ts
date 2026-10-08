@@ -4,7 +4,10 @@
 //   unsupported, cursor-edge turning: only in the outer 15% band of the
 //   screen and only while the cursor is over the playfield itself (not over
 //   a button / HUD card), up to 180 deg/s at the very edge
-//   left click / Space fire   X / Shift / right click swap   Esc / P pause
+//   left click / F fire (held: fever auto-fire via setFireHeld)
+//   Space: ROLL from L5 (roll unlocked), FIRE before (keyMap.ts); setting
+//   rollKey "shift" keeps Space = FIRE and makes Shift = ROLL
+//   X / Shift / right click swap (a denied swap blips)   Esc / P pause
 // Esc while locked is eaten by the browser and releases the lock, which we
 // treat as pause. The "click to play" click that takes the lock never fires.
 
@@ -12,9 +15,11 @@ import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import type { ArenaEngine } from "../game/arena";
 import type { ArenaWorld, Box } from "../render/arena/ArenaWorld";
+import { audio, swapOrDeny } from "../audio";
 import { getSettings } from "../ui/settings";
 import { ArenaControls } from "./ArenaControls";
 import { biggestThreat } from "./arenaMath";
+import { ArenaAction, keyAction, mouseAction } from "./keyMap";
 
 export type LockState = "none" | "locked" | "fallback";
 
@@ -77,6 +82,35 @@ export function useArenaDesktopControls(o: Options) {
       KeyW: "up", KeyS: "down", KeyA: "left", KeyD: "right", KeyQ: "turnL", KeyE: "turnR", ArrowLeft: "turnL", ArrowRight: "turnR",
       ArrowUp: "up", ArrowDown: "down",
     };
+    // FIRE sources currently held (Space / F / left mouse): fever auto-fire
+    // runs while any is down.
+    const held = new Set<string>();
+    const setHeld = (src: string, down: boolean) => {
+      if (down) held.add(src);
+      else held.delete(src);
+      latest.current.engine.setFireHeld(held.size > 0);
+    };
+    const act = (a: ArenaAction, src: string) => {
+      const { engine, controls } = latest.current;
+      switch (a) {
+        case "fire":
+          engine.fire();
+          setHeld(src, true);
+          break;
+        case "roll":
+          engine.roll(0, 0); // engine: move input, else backward
+          break;
+        case "swap":
+          swapOrDeny(engine, audio);
+          break;
+        case "face":
+          faceBiggestThreat(engine, controls);
+          break;
+        case "pause":
+          break;
+      }
+    };
+    const ctx = () => ({ rollUnlocked: latest.current.engine.getLevelDef().roll, rollKey: getSettings().rollKey });
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const { engine, controls, active } = latest.current;
@@ -86,36 +120,38 @@ export function useArenaDesktopControls(o: Options) {
         e.preventDefault();
         return;
       }
-      switch (e.code) {
-        case "Space":
-        case "Enter":
-          if (e.repeat) break;
-          if (!active && onButton(e.target)) return; // a focused button handles its own key
-          if (!active) latest.current.onIdleKey();
-          else if (e.code === "Space") engine.fire();
-          break;
-        case "KeyX":
-        case "ShiftLeft":
-        case "ShiftRight":
-          if (!e.repeat && active) engine.swapBomb();
-          break;
-        case "KeyR":
-          if (active) faceBiggestThreat(engine, controls);
-          break;
-        case "Escape":
-        case "KeyP":
-          if (!e.repeat && engine.getPhase() === "playing") latest.current.onPause();
-          break;
-        default:
+      if (e.code === "Space" || e.code === "Enter") {
+        if (!active && onButton(e.target)) return; // a focused button handles its own key
+        if (!active) {
+          if (!e.repeat) latest.current.onIdleKey();
+          e.preventDefault();
           return;
+        }
+        if (e.code === "Enter") {
+          e.preventDefault();
+          return;
+        }
       }
+      const a = keyAction(e.code, ctx());
+      if (!a) return;
       e.preventDefault();
+      if (a === "pause") {
+        if (!e.repeat && engine.getPhase() === "playing") latest.current.onPause();
+        return;
+      }
+      if (!active || (e.repeat && a !== "face")) return;
+      act(a, e.code);
     };
     const onKeyUp = (e: KeyboardEvent) => {
       const k = keyMap[e.code];
       if (k) latest.current.controls.keys[k] = false;
+      if (held.has(e.code)) setHeld(e.code, false);
     };
-    const onBlur = () => latest.current.controls.clear();
+    const onBlur = () => {
+      latest.current.controls.clear();
+      held.clear();
+      latest.current.engine.setFireHeld(false);
+    };
     // RN-web: a View ref is its DOM element. Overlays that ignore pointer
     // events (texts, canvas) let the root be the event target.
     const onPlayfield = (e: MouseEvent) => {
@@ -140,10 +176,13 @@ export function useArenaDesktopControls(o: Options) {
       }
     };
     const onDown = (e: MouseEvent) => {
-      const { engine, active } = latest.current;
+      const { active } = latest.current;
       if (!active || lockRef.current === "none" || (lockRef.current === "fallback" && !onPlayfield(e))) return;
-      if (e.button === 0) engine.fire();
-      else if (e.button === 2) engine.swapBomb();
+      const a = mouseAction(e.button);
+      if (a) act(a, `mouse${e.button}`);
+    };
+    const onUp = (e: MouseEvent) => {
+      if (held.has(`mouse${e.button}`)) setHeld(`mouse${e.button}`, false);
     };
     const onContext = (e: MouseEvent) => e.preventDefault();
     const onLockChange = () => {
@@ -160,6 +199,7 @@ export function useArenaDesktopControls(o: Options) {
     window.addEventListener("blur", onBlur);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mousedown", onDown);
+    window.addEventListener("mouseup", onUp);
     window.addEventListener("contextmenu", onContext);
     document.addEventListener("pointerlockchange", onLockChange);
     document.addEventListener("pointerlockerror", onLockError);
@@ -169,6 +209,8 @@ export function useArenaDesktopControls(o: Options) {
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mouseup", onUp);
+      latest.current.engine.setFireHeld(false);
       window.removeEventListener("contextmenu", onContext);
       document.removeEventListener("pointerlockchange", onLockChange);
       document.removeEventListener("pointerlockerror", onLockError);
@@ -176,10 +218,13 @@ export function useArenaDesktopControls(o: Options) {
     };
   }, [o.enabled]);
 
-  // stop cursor turning when play stops
+  // stop cursor turning (and fever auto-fire) when play stops
   useEffect(() => {
-    if (!o.active) o.controls.cursorTurn = 0;
-  }, [o.active, o.controls]);
+    if (!o.active) {
+      o.controls.cursorTurn = 0;
+      o.engine.setFireHeld(false);
+    }
+  }, [o.active, o.controls, o.engine]);
 
   return { lock, requestLock, releaseLock };
 }

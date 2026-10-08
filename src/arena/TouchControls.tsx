@@ -1,15 +1,21 @@
 // Arena 360 touch controls (spec section 6, mobile): a floating left
 // joystick (move, camera-relative), right-side drag to turn (0.45 deg/pt,
 // x1.6 on flicks, optional soft aim assist on release), and the thumb
-// cluster: FIRE (fires on touch-down), NEXT chip (swap) and TURN 180.
+// cluster: FIRE (fires on touch-down; held = fever auto-fire; shows the
+// loaded POWER icon + label), NEXT chip (swap; locked while a POWER is
+// loaded, a denied swap blips), TURN 180 and, from L5, ROLL (60pt at
+// (-172, -150) from the bottom-right safe corner, fires on touch-down,
+// segmented cooldown ring; rolls along the stick, else backward).
 // Input goes straight into ArenaControls refs; the joystick visual moves
 // with Animated values, so nothing re-renders per touch move.
 
 import { memo, useEffect, useMemo, useRef } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import type { ArenaEngine } from "../game/arena";
+import { audio, swapOrDeny } from "../audio";
+import type { ArenaEngine, PowerKind } from "../game/arena";
 import { haptics } from "../fx/haptics";
+import { LockGlyph, POWER_COLOR, POWER_LABEL, PowerIcon, SegmentRing, TumbleGlyph } from "../ui/arena/funGlyphs";
 import { getSettings } from "../ui/settings";
 import { BOMB_HEX, fonts, palette } from "../ui/theme";
 import { ArenaControls, TOUCH_RAD_PER_PX } from "./ArenaControls";
@@ -20,6 +26,9 @@ const KNOB = 52;
 const TRAVEL = 60;
 const EDGE = 20; // keep clear of system edge gestures
 const BOTTOM_EDGE = 16;
+const ROLL = 60;
+const ROLL_HIT = ROLL + 20; // hitSlop 10
+const native = Platform.OS !== "web";
 
 interface Props {
   engine: ArenaEngine;
@@ -30,10 +39,66 @@ interface Props {
   portrait: boolean;
   currentColor: number;
   nextColor: number;
+  power: PowerKind | null;
+  rollOn: boolean; // roll unlocked (L5+)
+  rollFill: number; // 0..1, 1 = ready
+  rolling: boolean;
+  rollNew: boolean; // first time the button shows: NEW badge + scale-in
+}
+
+function RollButton({ engine, right, bottom, fill, rolling, isNew }: {
+  engine: ArenaEngine; right: number; bottom: number; fill: number; rolling: boolean; isNew: boolean;
+}) {
+  const scale = useRef(new Animated.Value(isNew ? 0 : 1)).current;
+  const ready = fill >= 1 && !rolling;
+  const wasReady = useRef(ready);
+  useEffect(() => {
+    if (!isNew) return;
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 1.15, duration: 220, useNativeDriver: native }),
+      Animated.timing(scale, { toValue: 1, duration: 140, useNativeDriver: native }),
+    ]).start();
+  }, [isNew, scale]);
+  useEffect(() => {
+    // 120 ms punch when the cooldown completes
+    if (ready && !wasReady.current) {
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.12, duration: 60, useNativeDriver: native }),
+        Animated.timing(scale, { toValue: 1, duration: 60, useNativeDriver: native }),
+      ]).start();
+    }
+    wasReady.current = ready;
+  }, [ready, scale]);
+  const press = () => {
+    if (engine.roll(0, 0)) haptics.light(); // engine: stick direction, else backward
+  };
+  return (
+    <View
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel="Roll"
+      onAccessibilityTap={press}
+      onStartShouldSetResponder={() => true}
+      onResponderGrant={press}
+      style={[styles.rollHit, { right: right + 172 - ROLL_HIT / 2, bottom: bottom + 150 - ROLL_HIT / 2 }]}
+    >
+      <Animated.View style={[styles.roll, { transform: [{ scale }] }]}>
+        <SegmentRing size={ROLL} fill={rolling ? 0 : fill} color={palette.cyan} segments={24} thickness={3} />
+        <View style={{ opacity: ready ? 1 : 0.4 }}>
+          <TumbleGlyph size={26} />
+        </View>
+        {isNew && (
+          <View style={styles.newBadge}>
+            <Text style={styles.newText}>NEW</Text>
+          </View>
+        )}
+      </Animated.View>
+    </View>
+  );
 }
 
 export const TouchControls = memo(function TouchControls({
-  engine, controls, width, height, insets, portrait, currentColor, nextColor,
+  engine, controls, width, height, insets, portrait, currentColor, nextColor, power, rollOn, rollFill, rolling, rollNew,
 }: Props) {
   const zoneW = width * (portrait ? 0.5 : 0.4) - insets.left - EDGE;
   const zoneH = height * (portrait ? 0.4 : 0.7) - insets.bottom - BOTTOM_EDGE;
@@ -109,7 +174,12 @@ export const TouchControls = memo(function TouchControls({
 
   const right = insets.right;
   const bottom = insets.bottom;
-  const fireRing = BOMB_HEX[currentColor]?.glow ?? palette.cyan;
+  const fireRing = power ? POWER_COLOR[power] : BOMB_HEX[currentColor]?.glow ?? palette.cyan;
+  const fireDown = () => {
+    engine.fire();
+    engine.setFireHeld(true);
+  };
+  const fireUp = () => engine.setFireHeld(false);
   return (
     <View style={[styles.fill, styles.boxNone]}>
       <GestureDetector gesture={gestures.turn}>
@@ -134,25 +204,42 @@ export const TouchControls = memo(function TouchControls({
         accessible
         accessibilityRole="button"
         accessibilityLabel="Fire"
+        accessibilityHint={power ? `${POWER_LABEL[power]} loaded` : undefined}
         onAccessibilityTap={() => engine.fire()}
         onStartShouldSetResponder={() => true}
-        onResponderGrant={() => engine.fire()}
+        onResponderGrant={fireDown}
+        onResponderRelease={fireUp}
+        onResponderTerminate={fireUp}
         style={[styles.fireHit, { right: right + 64 - 52, bottom: bottom + 64 - 52 }]}
       >
         <View style={[styles.fire, { borderColor: fireRing }]}>
-          <View style={styles.crossH} />
-          <View style={styles.crossV} />
-          <View style={styles.crossDot} />
+          {power ? (
+            <PowerIcon kind={power} size={32} color={palette.ink} />
+          ) : (
+            <>
+              <View style={styles.crossH} />
+              <View style={styles.crossV} />
+              <View style={styles.crossDot} />
+            </>
+          )}
         </View>
       </View>
+      {power && (
+        <View style={[styles.powerLabelWrap, { right: right + 64 - 60, bottom: bottom + 64 + 40 + 10 }]}>
+          <Text style={[styles.powerLabel, { color: POWER_COLOR[power] }]}>{POWER_LABEL[power]}</Text>
+        </View>
+      )}
+      {rollOn && <RollButton engine={engine} right={right} bottom={bottom} fill={rollFill} rolling={rolling} isNew={rollNew} />}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Swap with next bomb"
+        accessibilityLabel={power ? "Swap locked while a power is loaded" : "Swap with next bomb"}
         hitSlop={8}
-        onPress={() => engine.swapBomb()}
-        style={[styles.next, { right: right + 168 - 28, bottom: bottom + 52 - 28 }]}
+        onPress={() => swapOrDeny(engine, audio)}
+        style={[styles.next, { right: right + 168 - 28, bottom: bottom + 52 - 28 }, power && styles.nextLocked]}
       >
-        <View style={[styles.nextDot, { backgroundColor: BOMB_HEX[nextColor]?.base ?? palette.textMuted }]} />
+        <View style={[styles.nextDot, { backgroundColor: BOMB_HEX[nextColor]?.base ?? palette.textMuted }]}>
+          {power && <LockGlyph size={14} color={palette.ink} />}
+        </View>
         <Text style={styles.nextLabel}>NEXT</Text>
       </Pressable>
       <Pressable
@@ -224,7 +311,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 1,
   },
-  nextDot: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.4)" },
+  nextDot: {
+    width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.4)", alignItems: "center", justifyContent: "center",
+  },
+  nextLocked: { opacity: 0.7 },
+  powerLabelWrap: { position: "absolute", width: 120, alignItems: "center", pointerEvents: "none" },
+  powerLabel: { fontFamily: fonts.button, fontSize: 12, letterSpacing: 1.4 },
+  rollHit: { position: "absolute", width: ROLL_HIT, height: ROLL_HIT, alignItems: "center", justifyContent: "center" },
+  roll: {
+    width: ROLL, height: ROLL, borderRadius: ROLL / 2, backgroundColor: "rgba(22, 10, 51, 0.75)", borderWidth: 2,
+    borderColor: "rgba(34, 242, 255, 0.35)", alignItems: "center", justifyContent: "center",
+  },
+  newBadge: {
+    position: "absolute", top: -8, right: -10, paddingHorizontal: 5, height: 16, borderRadius: 4, backgroundColor: palette.gold,
+    alignItems: "center", justifyContent: "center",
+  },
+  newText: { fontFamily: fonts.button, fontSize: 10, letterSpacing: 1, color: palette.ink },
   nextLabel: { fontFamily: fonts.label, fontSize: 11, letterSpacing: 1, color: palette.textSecondary },
   turn: {
     position: "absolute",

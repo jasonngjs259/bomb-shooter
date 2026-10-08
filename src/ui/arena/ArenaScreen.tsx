@@ -5,6 +5,11 @@
 //   -> play (creep on) -> end (lose / win sequence, card at 2.6 s).
 // Locks landscape on phones (native); mobile web shows a rotate toast.
 // A lost/blocked WebGL context pauses the game (no 2D fallback for Arena).
+// Fun pass: one-time feature tips, the L5 roll lesson (creep held), the
+// stars / unlock end card, progress (bs.arena.progress: the level's bests
+// go into newGame so levelStars.newBest is right) and the equipped skin
+// (world.setSkin, guarded until the renderer has it). `startLevel` comes
+// from the HANGAR LEVELS tab (score 0); PLAY starts at L1.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +20,9 @@ import { audio, bindArenaAudio, bindFunEvents, newArenaAudioState } from "../../
 import { TouchControls } from "../../arena/TouchControls";
 import { useArenaDesktopControls } from "../../arena/useArenaDesktopControls";
 import { ARENA_CONFIG, ArenaEngine } from "../../game/arena";
+import { SkinColors, skinColors } from "../../game/arena/skins";
+import { equip, isOwned, levelBest, markIntroSeen } from "../../storage/arenaProgress";
+import { getProgress, updateProgress, useProgress } from "../../storage/progressStore";
 import { getSimClock } from "../../game/clock";
 import { getFxBus } from "../../fx/bus";
 import { ArenaCanvas } from "../../render/arena/ArenaCanvas";
@@ -29,7 +37,9 @@ import { ScreenFlash } from "../ScreenFlash";
 import { reduceMotion, useSettings } from "../settings";
 import { palette } from "../theme";
 import { ArenaEndCard } from "./ArenaEndCard";
-import { ArenaHud, useArenaHud } from "./ArenaHud";
+import { ArenaHud, BOSS_ROW_H, bossRowTop, useArenaHud } from "./ArenaHud";
+import { FeatureTips } from "./FeatureTips";
+import { RollTutorial, wantsRollTutorial } from "./RollTutorial";
 import { Banner, ClickToPlay, LostCard, RotateToast, ThreatArrows } from "./ArenaOverlays";
 import { ArenaPauseExtras } from "./ArenaPauseExtras";
 import { ArenaTutorial, TUTORIAL_KEY } from "./ArenaTutorial";
@@ -50,7 +60,9 @@ const finePointer = () =>
     ? window.matchMedia("(pointer: fine)").matches
     : false;
 
-export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClassic: () => void }) {
+type SkinnableWorld = { setSkin?: (skin: SkinColors) => void };
+
+export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () => void; onClassic: () => void; startLevel?: number }) {
   const insets = useSafeAreaInsets();
   const win = useWindowDimensions();
   const [area, setArea] = useState<{ width: number; height: number } | null>(null);
@@ -78,6 +90,13 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   const tutorialSeen = useRef(true);
   const session = useArenaSession(engine, still);
   const hud = useArenaHud(engine);
+  const progress = useProgress();
+  const [rollTut, setRollTut] = useState(false);
+  const [rollNew, setRollNew] = useState(false);
+  const newGameAt = useCallback(
+    (level: number, keepScore: boolean) => engine.newGame({ level, keepScore, best: levelBest(getProgress(), level) }),
+    [engine]
+  );
   // Dev-only (web): expose the engine + world for QA scripts (window.__arena).
   useEffect(() => {
     if (!__DEV__ || Platform.OS !== "web" || typeof window === "undefined") return;
@@ -89,8 +108,8 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   }, [engine, world]);
 
   // Audio: engine + banner events -> sounds (before the mount effect below,
-  // so its READY banner and new game are heard); fun-feature events are
-  // tolerant no-ops until the engine emits them.
+  // so its READY banner and new game are heard); fun-feature events in
+  // funEvents.ts (stars / unlock / tip chimes are played by the UI).
   useEffect(() => {
     const st = newArenaAudioState();
     const offs = [bindArenaAudio(engine, audio, st, bus), bindFunEvents(engine, audio, st)];
@@ -109,7 +128,7 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
       .then((v) => (tutorialSeen.current = v !== null))
       .catch(() => undefined);
     tutorialSeen.current = false;
-    engine.newGame();
+    newGameAt(startLevel, false);
     engine.setCreepPaused(true);
     world.startIntro();
     world.onIntroDone = () => setStage((s) => (s === "intro" ? (tutorialSeen.current ? "play" : "tutorial") : s));
@@ -119,13 +138,38 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
       clock.reset();
       world.dispose();
     };
+    // mount only: the start level is fixed for this screen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, world, bus, clock]);
 
-  // creep only runs in "play"; GO! banner when play starts
+  // creep only runs in "play" (and not during the L5 roll lesson); GO! banner when play starts
   useEffect(() => {
-    engine.setCreepPaused(stage !== "play");
+    engine.setCreepPaused(stage !== "play" || rollTut);
+  }, [stage, rollTut, engine]);
+  useEffect(() => {
     if (stage === "play") bus.emit("banner", { text: "GO!", color: palette.gold, duration: 900 });
-  }, [stage, engine, bus]);
+  }, [stage, bus]);
+
+  // L5 roll lesson: once, when play starts on the level that introduces roll
+  useEffect(() => {
+    if (stage === "play" && wantsRollTutorial(engine)) setRollTut(true);
+    if (stage !== "play") setRollTut(false);
+  }, [stage, hud.level, engine]);
+  // ROLL button "NEW" badge the first time it shows (phone)
+  useEffect(() => {
+    if (!hud.rollOn || getProgress().introsSeen.includes("rollButton")) return;
+    setRollNew(true);
+    updateProgress((p) => markIntroSeen(p, "rollButton"));
+    const t = setTimeout(() => setRollNew(false), 4000);
+    return () => clearTimeout(t);
+  }, [hud.rollOn]);
+
+  // equipped skin -> renderer (setSkin lands with the renderer's fun pass)
+  const skinKey = `${progress.equipped.trim}|${progress.equipped.cannon}|${progress.equipped.plates}`;
+  useEffect(() => {
+    const w = world as unknown as SkinnableWorld;
+    if (typeof w.setSkin === "function") w.setSkin(skinColors(getProgress().equipped, (id) => isOwned(getProgress(), id)));
+  }, [world, skinKey]);
 
   useEffect(() => {
     if (session.result) setStage("end");
@@ -142,19 +186,21 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   }, [world, clock, live, paused, glDown]);
   useEffect(() => () => audio.setGamePaused(false), []);
 
+  // next: the following level, score kept (the PLAY run); retry: this level from score 0
   const restart = useCallback(
     (next: boolean) => {
       const level = engine.getLevel();
-      if (next) engine.newGame({ level: level + 1, keepScore: true });
-      else engine.newGame();
+      if (next) newGameAt(level + 1, true);
+      else newGameAt(level, false);
       world.restart();
       controls.clear();
       session.reset(next);
       setPaused(false);
+      setRollTut(false);
       setStage("play");
-      bus.emit("banner", { text: next ? `LEVEL ${level + 1}` : "GO!", color: palette.gold, duration: 900 });
+      bus.emit("banner", { text: next ? `LEVEL ${level + 1}` : `LEVEL ${level}`, color: palette.gold, duration: 900 });
     },
-    [engine, world, controls, session, bus]
+    [engine, world, controls, session, bus, newGameAt]
   );
 
   const onIdleKey = useCallback(() => {
@@ -173,14 +219,19 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
     ? { x: 16, y: 16, w: W - 32, h: H - 16 - 44 }
     : { x: insets.left + 16, y: insets.top + (portrait ? 128 : 72), w: W - insets.left - insets.right - 32, h: 0 };
   if (!desktopHud) arrowRect.h = H - insets.bottom - 16 - arrowRect.y;
+  const bossTop = bossRowTop(desktopHud, insets.top);
+  const bossBox: Box | null = hud.bossMk > 0 ? { x: W / 2 - (desktopHud ? 330 : 260), y: bossTop, w: desktopHud ? 660 : 520, h: BOSS_ROW_H } : null;
   const arrowAvoid: Box[] = desktopHud
-    ? [{ x: 16, y: 16, w: 236, h: 150 }, { x: radar.x, y: 16, w: 140, h: 140 + 8 + 86 }, { x: 16, y: H - 44, w: 560, h: 32 }]
+    ? [{ x: 16, y: 16, w: 236, h: 330 }, { x: radar.x, y: 16, w: 140, h: 140 + 8 + 130 }, { x: 16, y: H - 44, w: 640, h: 32 }]
     : desktopInput
-      ? []
+      ? [{ x: W / 2 - 220, y: H - insets.bottom - 44, w: 440, h: 36 }]
       : [
-          { x: W - insets.right - 210, y: H - insets.bottom - 210, w: 210, h: 210 },
+          { x: W - insets.right - 230, y: H - insets.bottom - 220, w: 230, h: 220 },
           { x: insets.left + 20, y: H - insets.bottom - 16 - 150, w: 160, h: 150 },
+          { x: W / 2 - 220, y: H - insets.bottom - 44, w: 440, h: 36 },
         ];
+  if (bossBox) arrowAvoid.push(bossBox);
+  const tipTop = hud.bossMk > 0 ? bossTop + BOSS_ROW_H + 8 : desktopHud ? 64 : insets.top + 12 + 52 + 8;
   const radarBox: Box = { x: radar.x, y: radar.y, w: radar.size, h: radar.size };
   const { lock, requestLock, releaseLock } = useArenaDesktopControls({
     enabled: desktopInput, engine, controls, world, active: live, onPause: togglePause, onIdleKey, rootRef,
@@ -214,16 +265,22 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
       {!desktopInput && live && (
         <TouchControls
           engine={engine} controls={controls} width={W} height={H} insets={insets} portrait={portrait}
-          currentColor={hud.current} nextColor={hud.next}
+          currentColor={hud.current} nextColor={hud.next} power={hud.power} rollOn={hud.rollOn} rollFill={hud.rollFill}
+          rolling={hud.rolling} rollNew={rollNew}
         />
       )}
       {stage !== "intro" && stage !== "end" && (
         <ArenaHud
           hud={hud} best={session.best} desktop={desktopHud} radarSize={radar.size} left={hudLeft}
           top={insets.top + 12} width={desktopHud ? W : W - hudLeft - insets.right - 12}
-          onPause={togglePause}
+          screenW={W} insetTop={insets.top} insetBottom={insets.bottom} onPause={togglePause}
         />
       )}
+      <FeatureTips engine={engine} allowed={live && stage === "play" && !rollTut} top={tipTop} />
+      <RollTutorial
+        engine={engine} desktop={desktopInput} active={rollTut && live && stage === "play"} bottom={insets.bottom + (desktopInput ? 48 : 200)}
+        onDone={() => setRollTut(false)}
+      />
       {live && <ThreatArrows world={world} engine={engine} controls={controls} />}
       <ArenaTutorial
         engine={engine} controls={controls} desktop={desktopInput} active={stage === "tutorial" && !paused}
@@ -245,8 +302,11 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
       {stage === "end" && session.visible && res && !glDown && (
         <ArenaEndCard
           won={res.won} score={res.score} best={session.best} isNewBest={session.isNewBest} level={res.level} time={res.time}
-          combo={res.combo} landscape={!portrait} armed={session.armed}
-          onAgain={() => restart(false)} onNext={() => restart(true)} onMenu={onExit}
+          combo={res.combo} stars={session.stars} unlocks={session.unlocks}
+          equipped={[progress.equipped.trim, progress.equipped.cannon, progress.equipped.plates]} still={still}
+          landscape={!portrait} armed={session.armed}
+          onRetry={() => restart(false)} onNext={() => restart(true)} onMenu={onExit}
+          onEquip={(id) => updateProgress((p) => equip(p, id))}
         />
       )}
       {glDown && <LostCard onRetry={() => rendererStatus.retry3D()} onClassic={onClassic} />}
