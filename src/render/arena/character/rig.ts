@@ -12,7 +12,7 @@ export type BoneRole =
   | "upperLegL" | "lowerLegL" | "footL" | "upperLegR" | "lowerLegR" | "footR";
 
 export type ClipRole =
-  | "idle" | "aim" | "walkF" | "runF" | "back" | "strafeL" | "strafeR" | "runAim" | "shoot" | "hit" | "death" | "win";
+  | "idle" | "aim" | "walkF" | "runF" | "back" | "strafeL" | "strafeR" | "runAim" | "shoot" | "hit" | "death" | "win" | "roll";
 
 export type MaterialRole = "suit" | "plates" | "trim" | "visor";
 
@@ -66,6 +66,7 @@ export const ASTRONAUT: RigConfig = {
     hit: ["HitRecieve", /hit|recieve|receive|damage/i],
     death: ["Death", /death|die/i],
     win: ["Wave", /victory|cheer|dance|wave/i],
+    roll: ["Roll", /roll|dodge|tumble/i],
   },
   // measured headless on the loop-closed clips (clipFix.ts): left-foot
   // touchdown (normalised time) and planted-foot speed at 1.8 high

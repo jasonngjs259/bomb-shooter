@@ -10,7 +10,10 @@
 // Each group's weights sum to 1 (less would blend towards the bind pose).
 // One-shots: shoot and hit are additive upper-body layers; death and win
 // are full-body clips that take over with a manual crossfade (so the sums
-// stay 1). Procedural posture / aim runs after update() (Posture.ts).
+// stay 1); the dodge Roll is a full-body one-shot (fun spec 2.5: 1.33 s clip
+// at timeScale 2.15, root XZ stripped so it plays in place while the engine
+// moves the player; 60 ms in, 120 ms out). Procedural posture / aim runs
+// after update() (Posture.ts).
 
 import {
   AdditiveAnimationBlendMode, AnimationAction, AnimationClip, AnimationMixer, AnimationUtils, LoopOnce, LoopRepeat, Object3D,
@@ -33,6 +36,25 @@ const W_RATE = 9; // weight easing (spec 14; 9 keeps the 90 deg strafe-foot blen
 const OFF = 0.01; // actions below this weight are not sampled
 const RUN_UPPER = 0.4; // share of the run-and-gun upper body while moving
 const FINGER = /(index|middle|ring|pinky|thumb)\d/i;
+const ROLL_RATE = 2.15; // Roll clip 1.33 s -> the 0.5 s roll's tumble
+
+// Root motion stripped: position tracks of the root-ish bones keep their
+// first key's horizontal (x, z) and only move vertically.
+function inPlace(source: AnimationClip, roots: string[]) {
+  const clip = source.clone();
+  for (const t of clip.tracks) {
+    if (!t.name.endsWith(".position")) continue;
+    const bone = t.name.slice(0, t.name.lastIndexOf("."));
+    if (!roots.includes(bone)) continue;
+    const v = Float32Array.from(t.values);
+    for (let i = 0; i < v.length; i += 3) {
+      v[i] = v[0];
+      v[i + 2] = v[2];
+    }
+    t.values = v;
+  }
+  return clip;
+}
 
 export class CharacterAnimator {
   readonly mixer: AnimationMixer;
@@ -54,6 +76,10 @@ export class CharacterAnimator {
   private readonly hit: AnimationAction | null;
   private readonly death: AnimationAction | null;
   private readonly win: AnimationAction | null;
+  private readonly rollA: AnimationAction | null;
+  rollW = 0; // full-body weight of the roll (0 when not rolling)
+  private rollT = 99;
+  private rollDur = 0.5;
   private shootT = 99;
   private hitT = 99;
   private hitK = 0;
@@ -133,6 +159,20 @@ export class CharacterAnimator {
     };
     this.death = full(clip("death"), false);
     this.win = full(clip("win"), true);
+    const rc = clip("roll");
+    this.rollA = rc ? full(inPlace(rc, [rig.bones.body[0], rig.bones.hips[0], "Root"]), false) : null;
+  }
+
+  get hasRoll() { return this.rollA !== null; }
+  // weight taken from the locomotion / aim layers by full-body clips
+  get takeover() { return Math.min(1, this.fullW + this.rollW); }
+
+  // Dodge roll for `duration` s (sim time).
+  roll(duration: number) {
+    if (!this.rollA || this.mode !== "play") return;
+    this.rollT = 0;
+    this.rollDur = duration;
+    this.rollA.reset().setEffectiveTimeScale(ROLL_RATE).setEffectiveWeight(this.rollW).play();
   }
 
   get hasDeath() { return this.death !== null; }
@@ -173,6 +213,9 @@ export class CharacterAnimator {
     this.shootT = this.hitT = 99;
     this.death?.stop();
     this.win?.stop();
+    this.rollA?.stop();
+    this.rollW = 0;
+    this.rollT = 99;
     this.shoot?.stop();
     this.hit?.stop();
     Object.assign(this.w, zeroWeights());
@@ -210,7 +253,15 @@ export class CharacterAnimator {
 
     // full-body takeover (manual crossfade keeps every group summing to 1)
     if (this.mode !== "play") this.fullW = Math.min(1, this.fullW + dt / this.fadeDur);
-    const keep = 1 - this.fullW;
+    this.rollT += dt;
+    const rolling = this.mode === "play" && this.rollT < this.rollDur;
+    this.rollW = rolling ? Math.min(1, this.rollW + dt / 0.06) : Math.max(0, this.rollW - dt / 0.12);
+    this.rollW = Math.min(this.rollW, 1 - this.fullW);
+    if (this.rollA) {
+      this.setW(this.rollA, this.rollW);
+      if (this.rollW <= 0 && this.rollT > this.rollDur) this.rollA.stop();
+    }
+    const keep = Math.max(0, 1 - this.fullW - this.rollW);
     for (const role of LOWER) {
       const a = this.lower[role];
       const w = this.w[role] * keep;
@@ -240,10 +291,11 @@ export class CharacterAnimator {
 
   // Per-group sums of the normal (non-additive) blend, for the smoke test.
   sums() {
-    const keep = 1 - this.fullW;
+    const keep = Math.max(0, 1 - this.fullW - this.rollW);
     let lower = 0;
     for (const role of LOWER) lower += this.w[role] * keep;
-    return { lower: lower + this.fullW, upper: (this.upper.aim + this.upper.run) * keep + this.fullW };
+    const full = this.fullW + this.rollW;
+    return { lower: lower + full, upper: (this.upper.aim + this.upper.run) * keep + full };
   }
 
   dispose(root: Object3D) {

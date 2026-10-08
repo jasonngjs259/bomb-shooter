@@ -167,6 +167,10 @@ export class Stickman implements Avatar {
   win() { this.inp.win = 0; }
   flinch() {}
   deflect() {}
+  roll() {}
+  hitReact() { this.inp.recoil = 0; }
+  setSkin() {}
+  headWorld(out: Vector3) { return out.set(this.group.position.x, 1.95, this.group.position.z); }
   reset() {
     Object.assign(this.inp, { recoil: 99, swap: 99, lose: -1, win: -1 });
     this.slideX = this.slideZ = 0;

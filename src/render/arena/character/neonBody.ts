@@ -1,9 +1,12 @@
 // Character body in one draw (character spec section 1, "Materials"): every
-// skinned primitive gets a role colour (COLOR_0) and a glow flag (aGlow:
-// 0 none, 1 trim, 2 visor), the primitives are merged into one geometry
-// (skinIndex / skinWeight survive) bound to the shared skeleton, and drawn
-// with one MeshStandardMaterial patched for glow verts, the danger lerp of
-// the trim and a fresnel rim (rim off on the low tier).
+// skinned primitive gets a role colour (COLOR_0) and a role flag (aGlow:
+// 0 suit, 1 trim, 2 visor, 3 plates), the primitives are merged into one
+// geometry (skinIndex / skinWeight survive) bound to the shared skeleton, and
+// drawn with one MeshStandardMaterial patched for glow verts, the danger lerp
+// of the trim and a fresnel rim (rim off on the low tier).
+// Fun pass: skinnable trim + plates (colour, plate metalness), the fever
+// boost (trim emissive x1.5) and a white hit flash. Trim colour order:
+// skin -> danger red (information, always wins over the skin) -> flash.
 
 import {
   BufferAttribute, BufferGeometry, Color, Float32BufferAttribute, Matrix3, Matrix4, MeshStandardMaterial, Object3D, SkinnedMesh, Vector3,
@@ -13,7 +16,7 @@ import type { MaterialRole } from "./rig";
 
 const ROLE: Record<MaterialRole, { color: string; glow: number }> = {
   suit: { color: "#1E1640", glow: 0 },
-  plates: { color: "#DCD6F7", glow: 0 },
+  plates: { color: "#DCD6F7", glow: 3 },
   trim: { color: "#22F2FF", glow: 1 },
   visor: { color: "#FF3DCB", glow: 2 },
 };
@@ -26,6 +29,10 @@ export interface NeonBody {
   setDanger(k: number): void; // 0..1 trim / rim lerp to danger red
   setVisor(k: number): void; // visor emissive multiplier (flicker)
   setRim(on: boolean): void;
+  setTrim(c: Color): void; // skin trim colour (before the danger lerp)
+  setPlates(c: Color, metal: number): void;
+  setBoost(k: number): void; // trim emissive multiplier (fever 1.5)
+  setFlash(k: number): void; // 0..1 trim to white (hit)
 }
 
 // Role for a source material: by name, else by colour (darkest = suit,
@@ -133,6 +140,8 @@ export function buildNeonBody(root: Object3D, roles: Record<string, MaterialRole
     uTrimK: { value: 2.2 },
     uVisorK: { value: 2.6 },
     uVisor: { value: new Color(ROLE.visor.color) },
+    uPlates: { value: new Color(ROLE.plates.color) },
+    uPlateMetal: { value: 0.15 },
   };
   const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.15 });
   material.onBeforeCompile = (shader) => {
@@ -143,14 +152,20 @@ export function buildNeonBody(root: Object3D, roles: Record<string, MaterialRole
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform vec3 uTrim;\nuniform vec3 uRim;\nuniform float uRimK;\nuniform float uTrimK;\nuniform float uVisorK;\nuniform vec3 uVisor;\nvarying float vGlow;",
+        "#include <common>\nuniform vec3 uTrim;\nuniform vec3 uRim;\nuniform float uRimK;\nuniform float uTrimK;\nuniform float uVisorK;\nuniform vec3 uVisor;\nuniform vec3 uPlates;\nuniform float uPlateMetal;\nvarying float vGlow;",
+      )
+      .replace(
+        "#include <metalnessmap_fragment>",
+        "#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, uPlateMetal, step(2.5, vGlow));",
       )
       .replace(
         "#include <emissivemap_fragment>",
         `#include <emissivemap_fragment>
 float isTrim = step(0.5, vGlow) * step(vGlow, 1.5);
-float isVisor = step(1.5, vGlow);
+float isVisor = step(1.5, vGlow) * step(vGlow, 2.5);
+float isPlate = step(2.5, vGlow);
 diffuseColor.rgb = mix(diffuseColor.rgb, uTrim, isTrim);
+diffuseColor.rgb = mix(diffuseColor.rgb, uPlates, isPlate);
 totalEmissiveRadiance += uTrim * uTrimK * isTrim + uVisor * uVisorK * isVisor;`,
       )
       .replace(
@@ -176,13 +191,35 @@ totalEmissiveRadiance += uTrim * uTrimK * isTrim + uVisor * uVisorK * isVisor;`,
 
   const trim = new Color(TRIM);
   const danger = new Color(DANGER);
+  const white = new Color(1, 1, 1);
   let rimOn = true;
+  let dangerK = 0;
+  let flashK = 0;
+  const refresh = () => {
+    uniforms.uTrim.value.copy(trim).lerp(danger, dangerK).lerp(white, flashK);
+    uniforms.uRim.value.copy(uniforms.uTrim.value);
+  };
   return {
     mesh,
     material,
     setDanger(k: number) {
-      uniforms.uTrim.value.copy(trim).lerp(danger, k);
-      uniforms.uRim.value.copy(uniforms.uTrim.value);
+      dangerK = k;
+      refresh();
+    },
+    setTrim(c: Color) {
+      trim.copy(c);
+      refresh();
+    },
+    setFlash(k: number) {
+      flashK = k;
+      refresh();
+    },
+    setPlates(c: Color, metal: number) {
+      uniforms.uPlates.value.copy(c);
+      uniforms.uPlateMetal.value = metal;
+    },
+    setBoost(k: number) {
+      uniforms.uTrimK.value = 2.2 * k;
     },
     setVisor(k: number) {
       uniforms.uVisorK.value = 2.6 * k;

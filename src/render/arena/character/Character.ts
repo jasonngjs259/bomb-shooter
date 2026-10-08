@@ -6,10 +6,14 @@
 // (CharacterAnimator), then posture + aim (Posture). Event hooks: fire,
 // swap, flinch (surge), deflect, lose (hit-stop, slide away from the blast,
 // death clip, the cannon drops) and win (victory loop).
+// Fun pass: the dodge roll (Roll clip in place, legs snap to the roll
+// direction, aim off), hitReact (HitRecieve at full strength + the trim
+// flashing white x3), fever (trim emissive x1.5) and Hangar skins (trim,
+// cannon, plates, prism hue cycle). Danger red always overrides the trim.
 
 import { AnimationClip, AnimationMixer, Box3, Color, Group, Object3D, Quaternion, Vector3 } from "three";
 import { angleDiff, DEG, wrapAngle } from "../../../arena/arenaMath";
-import { cdStep, clamp, easeInOutSine, expDampAngle, smoothstep, SpringState } from "../../../arena/springs";
+import { cdStep, clamp, easeInOutSine, expDamp, expDampAngle, smoothstep, SpringState } from "../../../arena/springs";
 import type { Avatar, AvatarFrame } from "../avatar";
 import { Blaster, Canister } from "./Blaster";
 import { rootToBoneLocal } from "./boneOps";
@@ -19,6 +23,7 @@ import { buildNeonBody, NeonBody } from "./neonBody";
 import { AimDrive, Bones, Posture } from "./Posture";
 import { PostureDrive, PostureState } from "./postureState";
 import { ASTRONAUT, BoneRole, findBone, findClip, RigConfig } from "./rig";
+import { prismColor, ResolvedSkin } from "../skin";
 
 export interface CharacterAsset { scene: Object3D; animations: AnimationClip[] }
 
@@ -68,6 +73,14 @@ export class Character implements Avatar {
   };
   private readonly aimIn: AimDrive = { aimErr: 0, aimPoint: new Vector3(), weight: 1, low: false };
   private rearWas = 0;
+  private readonly head: Object3D | null;
+  private skin: ResolvedSkin | null = null;
+  private flashT = 99;
+  private boost = 1;
+  private readonly trimC = new Color();
+  private readonly bodyC = new Color();
+  private readonly stripeC = new Color();
+  private t = 0;
 
   constructor(asset: CharacterAsset, rig: RigConfig = ASTRONAUT) {
     const scene = asset.scene;
@@ -85,6 +98,7 @@ export class Character implements Avatar {
     for (const role of Object.keys(rig.bones) as BoneRole[]) bones[role] = findBone(scene, rig.bones[role]);
     if (!bones.handR || !bones.upperArmR) throw new Error("character: no right arm");
     this.hips = bones.hips ?? bones.body;
+    this.head = bones.head ?? bones.neck;
     this.animator = new CharacterAnimator(scene, asset.animations, rig);
     this.posture = new Posture(this.model, bones, this.blaster, this.state);
 
@@ -150,6 +164,27 @@ export class Character implements Avatar {
     this.winning = true;
     this.animator.celebrate();
   }
+  roll(duration: number) {
+    if (this.losing >= 0 || this.winning) return;
+    this.animator.roll(duration);
+  }
+  hitReact() {
+    this.animator.flinch(1);
+    this.state.hit();
+    this.flashT = 0;
+  }
+  setSkin(skin: ResolvedSkin) {
+    this.skin = skin;
+    this.body.setPlates(skin.plates, skin.plateMetal);
+    this.body.setTrim(skin.trim);
+    this.blaster.setSkin(skin.body, skin.stripe);
+  }
+  headWorld(out: Vector3) {
+    if (this.head) this.head.getWorldPosition(out);
+    else out.copy(this.group.position).setY(1.6);
+    out.y += 0.22;
+    return out;
+  }
   reset() {
     this.animator.reset();
     this.state.reset();
@@ -158,6 +193,7 @@ export class Character implements Avatar {
     this.winning = false;
     this.slide.x = this.slide.v = 0;
     this.swapAge = this.stepT = 99;
+    this.flashT = 99;
     this.fastTurn = 0;
     if (this.dropped) {
       this.dropped = false;
@@ -180,7 +216,11 @@ export class Character implements Avatar {
     const a = this.animIn;
     a.step = 0;
     a.stepRate = 1.4;
-    if (playing) this.legs(f, speed);
+    // rolling: legs snap to the roll direction (the clip tumbles that way)
+    if (playing && f.rolling) {
+      this.legsYaw = Math.atan2(f.rollDirZ, f.rollDirX);
+      this.stepT = 99;
+    } else if (playing) this.legs(f, speed);
     // move direction in leg space, frozen while nearly stopped
     const ly = this.legsYaw;
     const fx = Math.cos(ly), fz = Math.sin(ly);
@@ -213,15 +253,34 @@ export class Character implements Avatar {
     const p = this.aimIn;
     p.aimErr = angleDiff(this.legsYaw, f.yaw);
     p.aimPoint = f.aim;
-    p.weight = 1 - this.animator.fullW;
+    p.weight = 1 - this.animator.takeover;
     p.low = f.low;
     this.posture.apply(p);
     if (this.winning) this.posture.cheer(this.animator.fullW);
     this.trackCombatMuzzle(f);
     this.body.setDanger(this.losing >= 0 ? 1 : Math.min(1, Math.max(0, (f.danger - 0.6) / 0.4)));
+    this.skinFrame(f);
     this.body.setRim(!f.low);
     this.body.setVisor(1 - 0.5 * this.state.barrelDip / (5 * DEG));
     this.dropCannon(dt);
+  }
+
+  // Skin + fever + hit flash on the trim (danger is applied by setDanger).
+  private skinFrame(f: AvatarFrame) {
+    this.t = f.t;
+    this.flashT += f.dt;
+    const flash = this.flashT < 0.6 ? (Math.floor(this.flashT / 0.1) % 2 === 0 ? 1 : 0) : 0;
+    this.body.setFlash(flash);
+    this.boost = expDamp(this.boost, f.fever ? 1.5 : 1, 8, f.dt);
+    const pulse = f.fever && !f.still ? 1 + 0.12 * Math.sin(f.t * Math.PI * 2 * 1.87) : 1;
+    this.body.setBoost(this.boost * pulse);
+    const sk = this.skin;
+    if (sk?.prism) {
+      this.body.setTrim(prismColor(f.t, 0, this.trimC));
+      prismColor(f.t, 0.33, this.stripeC);
+      this.bodyC.copy(this.stripeC).multiplyScalar(0.5);
+      this.blaster.setSkin(this.bodyC, this.stripeC);
+    }
   }
 
   // Legs yaw: trail the aim while moving; standing, step once it is 45 deg

@@ -3,6 +3,7 @@
 // fallback (Stickman.ts) when the model can't load.
 
 import type { Color, Object3D, Vector3 } from "three";
+import type { ResolvedSkin } from "./skin";
 
 export interface AvatarFrame {
   dt: number; // sim seconds (0 while paused / hit-stop)
@@ -23,6 +24,11 @@ export interface AvatarFrame {
   rearAngle: number; // world angle of that rear threat
   low: boolean; // low quality tier
   still: boolean; // reduced motion
+  fever: boolean; // FEVER active (trim glow x1.5)
+  rolling: boolean; // dodge roll in progress (engine moves the feet)
+  rollDirX: number; // unit roll direction (world)
+  rollDirZ: number;
+  stun: number; // s of stun left
 }
 
 export interface Avatar {
@@ -38,6 +44,10 @@ export interface Avatar {
   deflect(): void;
   lose(fromX: number, fromZ: number): void;
   win(): void;
+  roll(duration: number): void; // dodge roll started (play the Roll clip in place)
+  hitReact(): void; // knocked back by a roller (HitRecieve, trim flashes white x3)
+  setSkin(skin: ResolvedSkin): void;
+  headWorld(out: Vector3): Vector3; // helmet top (stun stars)
   reset(): void;
   setColors(current: Color, next: Color): void;
   update(f: AvatarFrame): void;
