@@ -6,11 +6,14 @@
 //    mouse chip clears the fever row;
 //  - the feature-tip queue and its "seen" rule (Esc / pause before 1.5 s
 //    requeues, tap / full hold / 1.5 s on screen = seen);
-//  - the play clock: held game time (intro, gate, tutorials, pause) is not
-//    par time, and levelStars FAST is corrected until the engine counts it.
+//  - the play clock: with the real engine (setClockPaused / getPlayTime) the
+//    par clock stays 0 in a creep-paused tutorial, the CLICK TO PLAY gate
+//    holds it, the end-card time is getPlayTime() and the UI subtracts
+//    nothing; the fallback path (engines without it) subtracts held time.
 // Run: npx tsx scripts/arena-ui-logic.ts
 
-import { correctStars, heldTime, isPlayClockPaused, playTime, resetPlayClock, setPlayClockPaused } from "../src/arena/playClock";
+import { correctStars, heldTime, isPlayClockPaused, nativePlayClock, playTime, resetPlayClock, setPlayClockPaused } from "../src/arena/playClock";
+import { ARENA_CONFIG, ArenaEngine, ArenaEvents } from "../src/game/arena";
 import {
   DESKTOP_CARD_INNER, DESKTOP_FEVER_W, feverRowWidth, MOUSE_CHIP_W, phoneFeverRow,
 } from "../src/ui/arena/arenaHudMetrics";
@@ -115,9 +118,10 @@ console.log("- tip queue + seen rule");
   assert(q.showing === null && q.pending.length === 0 && !seen.includes("rotation"), "level change: cleared, unseen");
 }
 
-console.log("- play clock");
+console.log("- play clock: fallback (engine without setClockPaused)");
 {
   const fake = { t: 0, getTime() { return this.t; } };
+  assert(!nativePlayClock(fake), "fake engine is not native");
   resetPlayClock(fake, true); // newGame during the intro
   fake.t = 2.8; // intro sweep
   assert(playTime(fake, fake.t) === 0 && isPlayClockPaused(fake), "intro: no par time");
@@ -135,15 +139,90 @@ console.log("- play clock");
   assert(fixed.fast && fixed.count === 2 && Math.abs(fixed.time - 30) < 1e-9, "FAST corrected with the held time");
   resetPlayClock(fake, true);
   assert(heldTime(fake) === 0, "new level resets the clock");
-  // engine with its own play clock: delegated, no UI offset
-  const calls: boolean[] = [];
-  const eng = { t: 5, getTime() { return this.t; }, setPlayClockPaused: (p: boolean) => calls.push(p) };
-  resetPlayClock(eng, true);
-  setPlayClockPaused(eng, false);
-  eng.t = 50;
-  setPlayClockPaused(eng, true);
-  assert(calls.join() === "true,false,true", "engine API called");
-  assert(heldTime(eng) === 0 && playTime(eng, 50) === 50 && correctStars(eng, ev) === ev, "engine counts it: no UI correction");
+}
+
+console.log("- play clock: either engine method name is native, setPlayClockPaused preferred");
+{
+  const calls: string[] = [];
+  const both = { getTime: () => 0, setPlayClockPaused: (p: boolean) => calls.push(`play:${p}`), setClockPaused: (p: boolean) => calls.push(`clock:${p}`) };
+  const alias = { getTime: () => 0, setClockPaused: (p: boolean) => calls.push(`alias:${p}`) };
+  const exact = { getTime: () => 0, setPlayClockPaused: (p: boolean) => calls.push(`exact:${p}`) };
+  assert(nativePlayClock(both) && nativePlayClock(alias) && nativePlayClock(exact), "either name = native");
+  setPlayClockPaused(both, true);
+  setPlayClockPaused(alias, true);
+  setPlayClockPaused(exact, true);
+  assert(calls.join() === "play:true,alias:true,exact:true", `preferred name first (${calls.join()})`);
+  assert(heldTime(both) === 0 && heldTime(alias) === 0 && heldTime(exact) === 0, "native: no UI subtraction");
+}
+
+console.log("- play clock: native (real ArenaEngine par clock)");
+{
+  const step = (e: ArenaEngine, sec: number) => {
+    for (let i = 0; i < Math.round(sec * 30) && e.getPhase() === "playing"; i++) e.update(1 / 30);
+  };
+  const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) <= eps;
+  const e = new ArenaEngine({ random: () => 0.41 });
+  assert(nativePlayClock(e), "ArenaEngine has the par clock: native");
+  // mount: newGame, creep held for the intro sweep + L1 tutorial
+  e.newGame({ level: 1 });
+  e.setCreepPaused(true);
+  resetPlayClock(e, true);
+  step(e, 6);
+  assert(e.getTime() > 5.9, "simulation runs during the tutorial");
+  assert(e.getPlayTime() === 0 && e.getStarProgress().time === 0, "par clock stays 0 while the creep is paused (tutorial)");
+  assert(playTime(e) === 0 && heldTime(e) === 0, "UI reads 0, subtracts nothing");
+  // play
+  e.setCreepPaused(false);
+  setPlayClockPaused(e, false);
+  step(e, 3);
+  const p1 = e.getPlayTime();
+  assert(near(p1, 3, 0.05), `3 s of play counted (${p1.toFixed(3)})`);
+  // CLICK TO PLAY gate: creep running (for the clock test), clock held through the helper
+  setPlayClockPaused(e, true);
+  const raw0 = e.getTime();
+  step(e, 2);
+  assert(e.getTime() - raw0 > 1.9, "simulation keeps running behind the gate");
+  assert(near(e.getPlayTime(), p1), "gate holds the par clock (setPlayClockPaused -> setClockPaused)");
+  setPlayClockPaused(e, false);
+  step(e, 1);
+  // no double subtraction: the UI value IS the engine value
+  assert(heldTime(e) === 0 && near(playTime(e), e.getPlayTime()) && near(e.getStarProgress().time, e.getPlayTime()), "no double subtraction (HUD = getStarProgress().time = getPlayTime())");
+  assert(e.getTime() - e.getPlayTime() > 7.5, "raw time includes the held 8 s; par clock does not");
+  // pause menu: update(0)
+  const p2 = e.getPlayTime();
+  for (let i = 0; i < 30; i++) e.update(0);
+  assert(near(e.getPlayTime(), p2), "dt 0 (pause) holds the clock");
+
+  // end card: won.time / levelStars.time = getPlayTime(), used as is
+  const w = new ArenaEngine({ random: () => 0.41, config: { earlyLevels: [{ bombs: 3, creepScale: 0.85 }, ...ARENA_CONFIG.earlyLevels.slice(1)] } });
+  let wonTime = -1;
+  let starsEv: ArenaEvents["levelStars"] | null = null;
+  let playAtWin = -1;
+  w.on("won", ({ time }) => {
+    wonTime = time;
+    playAtWin = w.getPlayTime(); // what useArenaSession stores as the result time
+  });
+  w.on("levelStars", (x) => (starsEv = x));
+  w.newGame({ level: 1 });
+  w.setCreepPaused(true);
+  resetPlayClock(w, true);
+  step(w, 4); // intro + tutorial: not par time
+  w.setCreepPaused(false);
+  setPlayClockPaused(w, false);
+  for (let i = 0; i < 6000 && w.getPhase() === "playing"; i++) {
+    if (i % 20 === 0) {
+      const b = w.getBombs().find((x) => x.state === "idle");
+      if (b) w.aimAt(b.x, b.z);
+      if (!w.getPowerSlot()) w.debugSpawnPickup("mega", w.getShooter().x, w.getShooter().z);
+      w.fire();
+    }
+    w.update(1 / 30);
+  }
+  assert(w.getPhase() === "won" && starsEv !== null, "debug win reached");
+  const ev = starsEv as unknown as ArenaEvents["levelStars"];
+  assert(near(wonTime, playAtWin) && near(ev.time, playAtWin), "end-card time = won.time = levelStars.time = getPlayTime()");
+  assert(w.getTime() - ev.time > 3.9, "the 4 s intro/tutorial is not in the end-card time");
+  assert(correctStars(w, ev) === ev, "no UI correction on native levelStars (no double subtraction)");
 }
 
 console.log(`arena-ui-logic: ${checks} checks passed`);

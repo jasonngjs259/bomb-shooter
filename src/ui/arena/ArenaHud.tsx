@@ -13,7 +13,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { keyLegend } from "../../arena/keyMap";
-import { isPlayClockPaused, playTime } from "../../arena/playClock";
+import { isPlayClockPaused } from "../../arena/playClock";
 import { DESKTOP_CARD_W, DESKTOP_FEVER_W, FEVER_LABEL_W, MOUSE_CHIP_W, PHONE_FEVER_W } from "./arenaHudMetrics";
 import type { ArenaEngine, PowerKind } from "../../game/arena";
 import { romanMk } from "../../game/arena/skins";
@@ -47,7 +47,7 @@ export function readHud(engine: ArenaEngine, total: number): HudState {
   const fever = engine.getFever();
   const roll = engine.getRoll();
   const sp = engine.getStarProgress();
-  const t = playTime(engine, sp.time); // real play only (playClock.ts)
+  const t = sp.time; // the engine's par clock (real play only): no UI correction
   const boss = engine.getBoss();
   const cd = engine.getFunConfig().roll.cooldown;
   const rollFill = roll.state === "locked" ? 0 : roll.state === "ready" ? 1 : Math.round((1 - Math.min(1, roll.cooldown / cd)) * ROLL_SEGMENTS) / ROLL_SEGMENTS;

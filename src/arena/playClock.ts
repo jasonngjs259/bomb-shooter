@@ -1,27 +1,42 @@
-// The par / star clock should only count REAL play: not the intro sweep,
-// the CLICK TO PLAY gate, the L1 tutorial, the L5 roll lesson, pause or the
-// end sequence. Every UI call site goes through setPlayClockPaused() so the
-// engine hook is a one-line wiring:
-//   - if the engine has `setPlayClockPaused(paused)` (engine fix in flight),
-//     it is called and the engine's star time is trusted as is;
-//   - otherwise the UI tracks the held game time itself (offset) and the HUD
-//     / end card read playTime() / correctStars() instead of the raw time.
-// Framework-free (scripts/arena-keymap.ts tests it with a fake engine).
+// The par / star clock only counts REAL play: not the intro sweep, the
+// CLICK TO PLAY gate, the L1 tutorial, the L5 roll lesson, pause or the end
+// sequence. Every UI call site goes through setPlayClockPaused().
+//
+// NATIVE (the real ArenaEngine): the engine owns the par clock,
+// `setPlayClockPaused(paused)` (or its alias `setClockPaused`) + `getPlayTime()`. It already stops the clock while
+// the creep is paused (intro, tutorials) and on dt 0 (pause), and
+// getStarProgress().time / won.time / levelStars.time / bossDefeated.time are
+// all par-clock times. The UI only adds the gates the creep pause doesn't
+// cover (CLICK TO PLAY) and must NOT subtract anything itself.
+//
+// FALLBACK (an engine with neither method, e.g. older builds / fakes): the
+// UI tracks the held game time and playTime() / correctStars() subtract it.
+// Framework-free (scripts/arena-ui-logic.ts tests both paths).
 
 export interface PlayClockEngine {
   getTime(): number;
-  setPlayClockPaused?: (paused: boolean) => void;
+  setPlayClockPaused?: (paused: boolean) => void; // preferred engine name
+  setClockPaused?: (paused: boolean) => void; // alias
+  getPlayTime?: () => number;
 }
 
 interface ClockState {
   paused: boolean;
-  since: number; // engine time when the hold started
-  offset: number; // game seconds held so far this level
+  since: number; // engine time when the hold started (fallback)
+  offset: number; // game seconds held so far this level (fallback)
 }
 
 const states = new WeakMap<object, ClockState>();
 
-const native = (e: PlayClockEngine) => typeof e.setPlayClockPaused === "function";
+// Does the engine keep the par clock itself? (either method name)
+export const nativePlayClock = (e: PlayClockEngine) =>
+  typeof e.setPlayClockPaused === "function" || typeof e.setClockPaused === "function";
+
+// Engine call: setPlayClockPaused preferred, setClockPaused as the fallback alias.
+function engineHold(e: PlayClockEngine, paused: boolean) {
+  if (typeof e.setPlayClockPaused === "function") e.setPlayClockPaused(paused);
+  else if (typeof e.setClockPaused === "function") e.setClockPaused(paused);
+}
 
 function state(e: PlayClockEngine): ClockState {
   let s = states.get(e);
@@ -35,7 +50,11 @@ function state(e: PlayClockEngine): ClockState {
 // Hold / release the play clock (idempotent).
 export function setPlayClockPaused(e: PlayClockEngine, paused: boolean) {
   const s = state(e);
-  if (native(e)) e.setPlayClockPaused!(paused);
+  if (nativePlayClock(e)) {
+    engineHold(e, paused);
+    s.paused = paused;
+    return;
+  }
   if (s.paused === paused) return;
   if (paused) s.since = e.getTime();
   else s.offset += Math.max(0, e.getTime() - s.since);
@@ -48,22 +67,26 @@ export function resetPlayClock(e: PlayClockEngine, paused: boolean) {
   s.offset = 0;
   s.since = e.getTime();
   s.paused = paused;
-  if (native(e)) e.setPlayClockPaused!(paused);
+  if (nativePlayClock(e)) engineHold(e, paused);
 }
 
 export const isPlayClockPaused = (e: PlayClockEngine) => state(e).paused;
 
-// Game seconds the UI must subtract from the engine's star time (0 when the engine does it).
+// Game seconds the UI must subtract from an engine time (always 0 when native).
 export function heldTime(e: PlayClockEngine): number {
-  if (native(e)) return 0;
+  if (nativePlayClock(e)) return 0;
   const s = state(e);
   return s.offset + (s.paused ? Math.max(0, e.getTime() - s.since) : 0);
 }
 
-// Star / par time of real play.
-export const playTime = (e: PlayClockEngine, rawTime: number) => Math.max(0, rawTime - heldTime(e));
+// Par time of real play: the engine's getPlayTime() when native, else the
+// raw time minus the UI-held time.
+export function playTime(e: PlayClockEngine, rawTime = e.getTime()): number {
+  if (nativePlayClock(e)) return typeof e.getPlayTime === "function" ? e.getPlayTime() : rawTime;
+  return Math.max(0, rawTime - heldTime(e));
+}
 
-// Fix a levelStars-like result with the UI-held time (no-op once the engine counts it).
+// Fallback only: fix a levelStars-like result with the UI-held time (no-op when native).
 export function correctStars<T extends { time: number; par: number; fast: boolean; count: number }>(e: PlayClockEngine, ev: T): T {
   const held = heldTime(e);
   if (held <= 0) return ev;

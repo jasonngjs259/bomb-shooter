@@ -8,7 +8,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ArenaEngine } from "../../game/arena";
 import { SkinItem, skinItem } from "../../game/arena/skins";
-import { correctStars, playTime } from "../../arena/playClock";
 import { applyLevelStars, reachLevel } from "../../storage/arenaProgress";
 import { ARENA_BEST_KEY, loadBestScore, saveBestScore } from "../../storage/bestScore";
 import { getProgress, setProgress } from "../../storage/progressStore";
@@ -47,14 +46,14 @@ export function useArenaSession(engine: ArenaEngine, still: boolean) {
       }
       AsyncStorage.setItem(ARENA_PLAYED_KEY, "1").catch(() => undefined);
       if (!won) setProgress(reachLevel(getProgress(), engine.getLevel()));
-      setResult({ won, score, level: engine.getLevel(), time: playTime(engine, engine.getTime()), combo: Math.max(combo.current, engine.getBestCombo()) });
+      setResult({ won, score, level: engine.getLevel(), time: engine.getPlayTime(), combo: Math.max(combo.current, engine.getBestCombo()) });
     };
     const offs = [
       engine.on("pop", ({ combo: c }) => (combo.current = Math.max(combo.current, c))),
       engine.on("gameOver", () => end(false)),
       engine.on("won", () => end(true)),
-      engine.on("levelStars", (raw) => {
-        const ev = correctStars(engine, raw); // star time = real play (no-op once the engine counts it)
+      engine.on("levelStars", (ev) => {
+        // ev.time is the engine's par clock (real play only): used as is
         const r = applyLevelStars(getProgress(), ev, engine.getScore());
         setProgress(r.progress);
         // newBest from the stored record (robust even if the engine's `best` was missing)
