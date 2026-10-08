@@ -265,7 +265,7 @@ export class ArenaWorld {
     });
     this.sky.update(this.realT, camera.position.x, camera.position.y, camera.position.z, low);
     const hfov = hFovFor(camera.fov, this.W / this.H);
-    this.radar.update(e, hfov);
+    this.radar.update(e, hfov, this.radarRect?.size ?? 140, dpr, dt);
     this.particles.setProjection((K * this.H * dpr) / (2 * Math.tan((camera.fov * Math.PI) / 360)), 1);
     this.updateThreats(camera, sectors);
   }
