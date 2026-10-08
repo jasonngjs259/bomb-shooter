@@ -45,7 +45,7 @@ Each trigger also emits `slowMo`.
 | `getBoss()` | `BossState \| null`: `{ mk, id, x, z, r, hp, maxHp, phase, weakColor, nextWeakColor, weakIn, shield[], shieldRadius, orbitSpeed (rad/s, signed), invulnerable }`. Each shield entry is `{ id, angle, x, z, colorIndex, scale }` |
 | `getTimeScale()` | current slow-mo scale (1 = normal) |
 | `getStarProgress()` | `{ time, par, flawless, maxDanger }`. `time` is the **par clock** (= `getPlayTime()`), `flawless` is whether FLAWLESS is still possible |
-| `getPlayTime()` | the par / FAST clock: seconds of real play. It only runs while the creep runs and `setClockPaused(false)`; Freeze time counts. `getTime()` is still the raw simulation time (incl. intro / tutorials) |
+| `getPlayTime()` | the par / FAST clock: seconds of real play. It only runs while the creep runs and `setPlayClockPaused(false)`; Freeze time counts. `getTime()` is still the raw simulation time (incl. intro / tutorials) |
 | `getBestCombo()` | best combo this level. The combo count has no cap; only the score multiplier caps at x5 |
 | `getFunConfig()` | the merged `ARENA_FUN` |
 
@@ -68,7 +68,7 @@ The unchanged getters are `getBombs`, `getShooter`, `getCurrentBomb/NextBomb`, `
 | `newGame({ level?, keepScore?, levelDef?, best? })` | `levelDef` overrides the table. `best: { score?, combo?, time? }` holds the persisted bests and is used for `levelStars.newBest` |
 | `fire(): boolean` | Fires the loaded power first, without advancing the colour queue. Rejected while rolling or stunned, but the press is buffered: during a roll it fires at roll end, and during the last 0.2 s of a stun it fires when the stun ends |
 | `swapBomb(): boolean` | Returns false while a power is loaded. The UI plays the "denied" blip |
-| `setClockPaused(paused)` | Stops / resumes the par clock only (the simulation keeps going). The par clock already stops whenever the creep is paused (intro sweep, L1 tutorial, L5 roll lesson) and when `update()` gets dt 0 (pause menu). Call it for any other gate where the player isn't playing yet, e.g. CLICK TO PLAY |
+| `setPlayClockPaused(paused: boolean)` (on `ArenaEngineView` too; `isPlayClockPaused()` reads it; `setClockPaused` is an alias) | Holds / resumes the par clock only (the simulation keeps going). While held, `getPlayTime()`, `getStarProgress().time`, FAST, the clear bonus and `levelStars.time` / `won.time` don't advance. It works on its own; the UI calls it for the intro, L1 tutorial, L5 roll lesson, CLICK TO PLAY, pause, end sequence and lost WebGL. The flag persists across `newGame` (the UI owns it). The par clock already stops whenever the creep is paused (intro sweep, L1 tutorial, L5 roll lesson) and when `update()` gets dt 0 (pause menu). Call it for any other gate where the player isn't playing yet, e.g. CLICK TO PLAY |
 | `roll(dirX, dirZ): boolean` | Takes a world-space vector. If its length is ≤ 0.3, the engine uses the move input instead, and if that is also ≤ 0.3 it dodges smart: perpendicular to a roller approaching within 6 w (the side with more room from the border and other rollers), else sideways to the facing (towards open space, alternating on a tie). Returns true if the roll started or was buffered (pressed ≤ 0.2 s before ready). Before L5 it returns false and `getRoll().state === "locked"` |
 | `setFireHeld(held)` | Auto-repeats fire, but only while fever is active |
 | `previewPower(kind, yaw): number[]` | Field bomb ids that `kind` would remove if fired along `yaw` |

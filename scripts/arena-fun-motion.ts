@@ -312,10 +312,12 @@ const still = { creepSpeed: 0, surgeStep: 0 };
   e.setCreepPaused(false);
   run(e, 5);
   near(e.getStarProgress().time, 5, DT, "par clock runs in play");
-  e.setClockPaused(true); // UI gate (CLICK TO PLAY / overlay)
+  e.setPlayClockPaused(true); // UI hold (CLICK TO PLAY / pause / end sequence), creep still running
   run(e, 3);
-  near(e.getPlayTime(), 5, DT, "setClockPaused stops it");
-  e.setClockPaused(false);
+  near(e.getPlayTime(), 5, DT, "setPlayClockPaused holds it on its own");
+  near(e.getStarProgress().time, 5, DT, "star time held too");
+  assert(e.isPlayClockPaused(), "isPlayClockPaused");
+  e.setPlayClockPaused(false);
   e.debugSpawnPickup("freeze", e.getShooter().x, e.getShooter().z);
   run(e, 2);
   near(e.getPlayTime(), 7, DT * 2, "Freeze time counts");
@@ -327,7 +329,7 @@ const still = { creepSpeed: 0, surgeStep: 0 };
     e.update(DT);
   }
   assert(stars[0] && Math.abs(stars[0].time - e.getPlayTime()) < 1e-9 && stars[0].time < e.getTime() - 12 && stars[0].fast, "levelStars.time / FAST use the par clock");
-  ok("par clock: stops while creep-paused / clock-paused, Freeze counts, FAST + levelStars use it", `sim ${e.getTime().toFixed(1)} s, par clock ${e.getPlayTime().toFixed(1)} s`);
+  ok("par clock: stops while creep-paused / setPlayClockPaused, Freeze counts, FAST + levelStars use it", `sim ${e.getTime().toFixed(1)} s, par clock ${e.getPlayTime().toFixed(1)} s`);
 }
 
 // ---- 6. Perf: 150 bombs + boss + 2 rollers + 2 pickups + fever ------------------------

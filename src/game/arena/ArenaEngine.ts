@@ -24,7 +24,7 @@
  * COMMANDS: newGame({level, keepScore, levelDef, best}), update(dt),
  *   setMoveInput(x, z) (WORLD-space, |v| <= 1), setYaw(rad), turn(delta), aimAt(x, z),
  *   fire(), swapBomb(), setCreepPaused(paused), roll(dirX, dirZ), setFireHeld(held),
- *   previewPower(kind, yaw); dev/tests: debugSpawnPickup, debugSetFever,
+ *   previewPower(kind, yaw), setPlayClockPaused(paused); dev/tests: debugSpawnPickup, debugSetFever,
  *   debugSetBossHp, debugLaunchRoller, debugArmTicking.
  * TIME SCALE: the renderer calls update(realDt * getTimeScale()) (slow-mo).
  * PHASES: title -> playing -> gameOver | won   (newGame() from any phase)
@@ -111,7 +111,7 @@ export class ArenaEngine {
   getPhase(): ArenaPhase { return this.core.phase; }
   getRemaining(): number { return this.core.active.length; }
   getTime(): number { return this.core.time; } // simulation time (incl. intro / tutorial)
-  getPlayTime(): number { return this.core.playTime; } // par / FAST clock (see setClockPaused)
+  getPlayTime(): number { return this.core.playTime; } // par / FAST clock (see setPlayClockPaused)
   getRevision(): number { return this.core.revision; }
   getPickups(): readonly Readonly<Pickup>[] { return this.sys.pickups.list; }
   getPowerSlot(): PowerKind | null { return this.sys.pickups.slot; }
@@ -200,9 +200,12 @@ export class ArenaEngine {
   // UI gates the creep pause doesn't cover (CLICK TO PLAY, overlays). The par
   // clock already stops whenever the creep is paused (intro sweep, L1
   // tutorial, L5 roll lesson) and when update() isn't called / gets dt 0.
-  setClockPaused(paused: boolean) {
+  setPlayClockPaused(paused: boolean) {
     this.core.clockPaused = paused;
   }
+  isPlayClockPaused(): boolean { return this.core.clockPaused; }
+  // Older name, same thing.
+  setClockPaused(paused: boolean) { this.setPlayClockPaused(paused); }
 
   // Fire the loaded power, else the current bomb, along yaw. False if not
   // allowed right now (a press during a roll / late stun is buffered).

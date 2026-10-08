@@ -196,6 +196,8 @@ export type ArenaEngineView = Pick<
   | "getTime"
   | "getRevision"
   | "getPlayTime"
+  | "setPlayClockPaused"
+  | "isPlayClockPaused"
   | "getLevelDef"
   | "getPickups"
   | "getPowerSlot"
