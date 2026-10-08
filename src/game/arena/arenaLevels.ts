@@ -19,7 +19,7 @@
 //      L%3==0 BOSS Mk L/3: creep 0.032+0.001(n-4) [previous level's], armored = previous x0.6 [x0.7],
 //      ticking 1 [previous x0.7], previous level's rotation.
 //  Boss Mk n (bossDef): HP 12 + 2 max(0, n-2) = 12/12/14/16 [10+4(n-1) = 10/14/18/22]; shield min(12, 6+2n) [cap 14];
-//      orbit min(64, 24+12n) deg/s [cap 80]; regrow Mk I 5 s, Mk II-III 8 s, IV+ 9 s [max(3.5, 8-n)].
+//      orbit min(64, 24+12n) deg/s [cap 80]; regrow Mk I 7 s, Mk II-III 8 s, IV+ 9 s [max(3.5, 8-n) = 7/6/5/4].
 // Rotation sign: + = angle increasing from +x towards +z (clockwise seen from above with +z down).
 
 import type { ArenaConfig } from "./types";
@@ -86,7 +86,7 @@ export function bossDef(mk: number): BossDef {
     coreHp: 12 + 2 * Math.max(0, mk - 2),
     shield: Math.min(12, 6 + 2 * mk),
     orbit: Math.min(64, 24 + 12 * mk),
-    regrow: mk === 1 ? 5 : mk <= 3 ? 8 : 9,
+    regrow: mk === 1 ? 7 : mk <= 3 ? 8 : 9,
     ring: Math.min(100, 36 + 12 * mk),
   };
 }

@@ -29,7 +29,7 @@ const R = 0, Y = 1, B = 2; // colour indices
   const sig = rows.map((d) => `${d.bombs}/${d.creepBase.toFixed(4)}/a${d.armored}t${d.ticking}r${d.rollers}x${d.rollersLive}/${d.rotation.join(":")}/${d.doubleRing ? "D" : "-"}/${d.boss ? `B${d.boss.mk}` : "-"}/${d.par}`);
   console.log(`  level table:\n    ${sig.map((s, i) => `L${i + 1} ${s}`).join("\n    ")}`);
   const b = [3, 6, 9, 12].map((lv) => levelDef(ARENA_CONFIG, lv).boss!);
-  assert(b.map((x) => `${x.mk}:${x.coreHp}:${x.shield}:${x.orbit}:${x.regrow}`).join() === "1:12:8:36:5,2:12:10:48:8,3:14:12:60:8,4:16:12:64:9", "boss Mk table (tuned)");
+  assert(b.map((x) => `${x.mk}:${x.coreHp}:${x.shield}:${x.orbit}:${x.regrow}`).join() === "1:12:8:36:7,2:12:10:48:8,3:14:12:60:8,4:16:12:64:9", "boss Mk table (tuned)");
   const l10 = levelDef(ARENA_CONFIG, 10), l11 = levelDef(ARENA_CONFIG, 11);
   assert(l10.bombs === 138 && l10.rotation[0] === 5 && !l10.doubleRing && l11.doubleRing && l11.rotation.join() === "5,-3", "L10+ twist deck");
   ok("level table, unlock schedule, boss Mk table, L10+ generator");
