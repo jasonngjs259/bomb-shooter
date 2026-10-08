@@ -83,7 +83,11 @@ export const ArenaHud = memo(function ArenaHud({ hud, best, desktop, radarSize, 
   // "x3" repeats next to the score for 900 ms after a combo
   const [comboShown, setComboShown] = useState(0);
   useEffect(() => {
-    if (hud.combo < 2) return;
+    // combo back to 0 (miss, new game / next level): clear it immediately
+    if (hud.combo < 2) {
+      setComboShown(0);
+      return;
+    }
     setComboShown(hud.combo);
     const id = setTimeout(() => setComboShown(0), 900);
     return () => clearTimeout(id);

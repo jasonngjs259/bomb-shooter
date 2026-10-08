@@ -88,11 +88,12 @@ surrounds it on all sides (360°) and slowly creeps inwards.
   (including itself), they pop; small groups cut loose by a pop shatter for a
   bonus, and every pop knocks nearby bombs back outwards.
 - Walk around inside the arena to get closer or find a better angle.
-- **You lose** when a creeping bomb crosses the arena's border line.
-  (A non-matching shot that would stick on/inside the line just deflects.)
+- **You lose** when a creeping bomb crosses the arena's border line. Your
+  own shots can't lose the game: a non-matching shot that would stick within
+  1 unit of the line deflects, and a freshly stuck shot gets 1.5 s of grace.
 - **You win** when every bomb is cleared; then go on to the next level
-  (more bombs, faster creep; the creep also surges every 20 s). Level 1 is
-  a gentler warm-up: 60 bombs and a slower creep.
+  (more bombs, faster creep; the creep also surges every 20 s). The first
+  levels ramp gently: 60, 75, 90 bombs, then +12 per level.
 - A shot that bounces off at the border line shows **DEFLECT**.
 - Help: the ground danger ring and the radar show where bombs are close,
   red arrows point at off-screen threats, and the aim laser highlights the
@@ -116,7 +117,9 @@ has Arena settings: mouse speed (desktop) and aim assist (touch). Arena needs
 3D: if WebGL is lost or unavailable the game pauses with **Retry 3D** /
 **Play Classic**. Headless checks: `npx tsx scripts/arena-sanity.ts` (rules)
 and `npx tsx scripts/arena-controls.ts` (controls + camera maths + render
-passes); `node scripts/check-no-prototype-calls.mjs` guards against calling
+passes); `npx tsx --tsconfig scripts/smoke/tsconfig.json scripts/arena-smoke.ts`
+runs the real Arena frame driver headless (stub renderer) through intro,
+play, win and loss; `node scripts/check-no-prototype-calls.mjs` guards against calling
 three.js methods through `.prototype`. Dev builds on web accept
 `?arenaBombs=12` to shrink level 1 (to reach the win screen quickly); it is
 ignored in production builds.

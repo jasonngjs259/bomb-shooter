@@ -128,17 +128,23 @@ export const TouchControls = memo(function TouchControls({
         </View>
       </GestureDetector>
 
-      <Pressable
+      {/* FIRE: raw responder, fires on the touch-down grant (Pressable adds a
+          press-in delay). The 104pt hit area = 80pt button + 12pt slop. */}
+      <View
+        accessible
         accessibilityRole="button"
         accessibilityLabel="Fire"
-        hitSlop={12}
-        onPressIn={() => engine.fire()}
-        style={[styles.fire, { right: right + 64 - 40, bottom: bottom + 64 - 40, borderColor: fireRing }]}
+        onAccessibilityTap={() => engine.fire()}
+        onStartShouldSetResponder={() => true}
+        onResponderGrant={() => engine.fire()}
+        style={[styles.fireHit, { right: right + 64 - 52, bottom: bottom + 64 - 52 }]}
       >
-        <View style={styles.crossH} />
-        <View style={styles.crossV} />
-        <View style={styles.crossDot} />
-      </Pressable>
+        <View style={[styles.fire, { borderColor: fireRing }]}>
+          <View style={styles.crossH} />
+          <View style={styles.crossV} />
+          <View style={styles.crossDot} />
+        </View>
+      </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Swap with next bomb"
@@ -193,8 +199,8 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#FFFFFF",
   },
+  fireHit: { position: "absolute", width: 104, height: 104, alignItems: "center", justifyContent: "center" },
   fire: {
-    position: "absolute",
     width: 80,
     height: 80,
     borderRadius: 40,

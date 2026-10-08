@@ -32,13 +32,32 @@ export default function App() {
   // Classic (with the title) or Arena 360; each owns its own GL canvas, so
   // only one WebGL context is alive at a time.
   const [mode, setMode] = useState<"classic" | "arena">("classic");
+  // "Play Classic" from Arena's 3D-unavailable card starts a Classic game
+  // right away (2D fallback) instead of landing on the title
+  const [classicNow, setClassicNow] = useState(false);
 
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar style="light" />
-        {ready && mode === "classic" && <GameScreen onArena={() => setMode("arena")} />}
-        {ready && mode === "arena" && <ArenaScreen onExit={() => setMode("classic")} onClassic={() => setMode("classic")} />}
+        {ready && mode === "classic" && (
+          <GameScreen
+            autoStart={classicNow}
+            onArena={() => {
+              setClassicNow(false);
+              setMode("arena");
+            }}
+          />
+        )}
+        {ready && mode === "arena" && (
+          <ArenaScreen
+            onExit={() => setMode("classic")}
+            onClassic={() => {
+              setClassicNow(true);
+              setMode("classic");
+            }}
+          />
+        )}
         {!ready && (
           <View style={styles.loader}>
             <ActivityIndicator size="large" color={palette.cyan} />

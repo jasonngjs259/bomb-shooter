@@ -145,6 +145,22 @@ export function startShatter(b: SimBomb, c: ArenaConfig) {
   b.vz = (b.z / d) * c.shatterSpeed;
 }
 
+// Idle bomb on/over the border that ends the game: any creeping bomb, but
+// not a shot stuck less than stuckGrace seconds ago.
+export function loseCandidate(active: readonly SimBomb[], c: ArenaConfig): SimBomb | null {
+  let best: SimBomb | null = null;
+  let bestGap = 0;
+  for (const b of active) {
+    if (b.stuck && b.age < c.stuckGrace) continue;
+    const gap = borderGap(b, c);
+    if (gap <= bestGap) {
+      bestGap = gap;
+      best = b;
+    }
+  }
+  return best;
+}
+
 // Idle bomb nearest to crossing the border (null if the field is empty).
 export function closestToBorder(active: readonly SimBomb[], c: ArenaConfig): SimBomb | null {
   let best: SimBomb | null = null;

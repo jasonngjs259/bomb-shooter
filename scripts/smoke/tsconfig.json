@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "react-native": ["scripts/smoke/stubs/react-native.ts"],
+      "expo-haptics": ["scripts/smoke/stubs/expo-haptics.ts"],
+      "@react-native-async-storage/async-storage": ["scripts/smoke/stubs/async-storage.ts"]
+    }
+  }
+}

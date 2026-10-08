@@ -1,8 +1,9 @@
 // Arena 360 first-run tutorial (spec section 10; "bs.arenaTutorialSeen"),
 // run after the intro sweep with the creep paused: 1 MOVE (walk 1.5 w),
 // 2 AIM (turn 90 deg total), 3 FIRE (first pop or 3 shots). Each step ticks
-// a check, then the next starts after 300 ms. SKIP ends it. After that,
-// on the 2nd shot of the game, a 3 s swap hint.
+// a check, then the next starts after 300 ms. SKIP ends it. Right after a
+// tutorial run (first-run only), on the 2nd shot, a one-off 3 s swap hint;
+// never during the end / win sequences (swapHintEnabled goes false).
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
@@ -23,15 +24,17 @@ interface Props {
   controls: ArenaControls;
   desktop: boolean;
   active: boolean; // tutorial stage running
+  swapHintEnabled: boolean; // tutorial ran this session and play is live
   bottom: number;
   onDone: () => void;
   onLaserWide: (wide: number) => void;
 }
 
-export function ArenaTutorial({ engine, controls, desktop, active, bottom, onDone, onLaserWide }: Props) {
+export function ArenaTutorial({ engine, controls, desktop, active, swapHintEnabled, bottom, onDone, onLaserWide }: Props) {
   const [step, setStep] = useState(0);
   const [ticked, setTicked] = useState(false);
   const [swapHint, setSwapHint] = useState(false);
+  const swapHintShown = useRef(false);
   const progress = useRef({ walked: 0, x: 0, z: 0, turned0: 0, shots: 0, popped: false });
 
   useEffect(() => {
@@ -81,14 +84,15 @@ export function ArenaTutorial({ engine, controls, desktop, active, bottom, onDon
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticked, step]);
 
-  // swap hint on the 2nd shot of the game (after the tutorial)
+  // one-off swap hint on the 2nd shot after the tutorial
   useEffect(() => {
-    if (active) return;
+    if (!swapHintEnabled || swapHintShown.current) return;
     let shots = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const off = engine.on("shoot", () => {
       shots++;
-      if (shots === 2) {
+      if (shots === 2 && !swapHintShown.current) {
+        swapHintShown.current = true;
         setSwapHint(true);
         timer = setTimeout(() => setSwapHint(false), 3000);
       }
@@ -96,8 +100,9 @@ export function ArenaTutorial({ engine, controls, desktop, active, bottom, onDon
     return () => {
       off();
       if (timer) clearTimeout(timer);
+      setSwapHint(false);
     };
-  }, [active, engine]);
+  }, [swapHintEnabled, engine]);
 
   function finish() {
     AsyncStorage.setItem(TUTORIAL_KEY, "1").catch(() => undefined);
@@ -105,7 +110,7 @@ export function ArenaTutorial({ engine, controls, desktop, active, bottom, onDon
   }
 
   if (!active) {
-    if (!swapHint) return null;
+    if (!swapHint || !swapHintEnabled) return null;
     return (
       <View style={[styles.wrap, styles.none, { bottom }]}>
         <View style={styles.pill}>

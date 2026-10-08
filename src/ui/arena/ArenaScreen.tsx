@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArenaControls } from "../../arena/ArenaControls";
 import { TouchControls } from "../../arena/TouchControls";
 import { useArenaDesktopControls } from "../../arena/useArenaDesktopControls";
-import { ArenaEngine } from "../../game/arena";
+import { ARENA_CONFIG, ArenaEngine } from "../../game/arena";
 import { getSimClock } from "../../game/clock";
 import { getFxBus } from "../../fx/bus";
 import { ArenaCanvas } from "../../render/arena/ArenaCanvas";
@@ -56,7 +56,7 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   const H = area?.height ?? win.height;
   const engine = useMemo(() => {
     const dev = devLevel1Bombs();
-    return new ArenaEngine(dev ? { config: { firstLevelBombs: dev } } : {});
+    return new ArenaEngine(dev ? { config: { earlyLevels: [{ bombs: dev, creepScale: 0.85 }, ...ARENA_CONFIG.earlyLevels.slice(1)] } } : {});
   }, []);
   const rootRef = useRef<View>(null);
   const controls = useMemo(() => new ArenaControls(), []);
@@ -72,6 +72,7 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   const portrait = H > W;
   const [stage, setStage] = useState<Stage>("intro");
   const [paused, setPaused] = useState(false);
+  const [tutorialRan, setTutorialRan] = useState(false);
   const tutorialSeen = useRef(true);
   const session = useArenaSession(engine, still);
   const hud = useArenaHud(engine);
@@ -104,6 +105,9 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   useEffect(() => {
     if (session.result) setStage("end");
   }, [session.result]);
+  useEffect(() => {
+    if (stage === "tutorial") setTutorialRan(true);
+  }, [stage]);
 
   const live = (stage === "tutorial" || stage === "play") && !paused && !glDown;
   useEffect(() => {
@@ -132,13 +136,6 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   }, [stage, world, session, restart]);
 
   const togglePause = useCallback(() => setPaused((p) => !p), []);
-  const { lock, requestLock, releaseLock } = useArenaDesktopControls({
-    enabled: desktopInput, engine, controls, world, active: live, onPause: togglePause, onIdleKey, rootRef,
-  });
-  useEffect(() => {
-    if (paused || stage === "end" || glDown) releaseLock();
-  }, [paused, stage, glDown, releaseLock]);
-
   // radar viewport (css px, top-left origin) and HUD placement
   const radar: RadarRect = desktopHud
     ? { x: W - 16 - 140, y: 16, size: 140 }
@@ -157,6 +154,14 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
           { x: W - insets.right - 210, y: H - insets.bottom - 210, w: 210, h: 210 },
           { x: insets.left + 20, y: H - insets.bottom - 16 - 150, w: 160, h: 150 },
         ];
+  const radarBox: Box = { x: radar.x, y: radar.y, w: radar.size, h: radar.size };
+  const { lock, requestLock, releaseLock } = useArenaDesktopControls({
+    enabled: desktopInput, engine, controls, world, active: live, onPause: togglePause, onIdleKey, rootRef,
+    uiBoxes: desktopHud ? arrowAvoid : [radarBox],
+  });
+  useEffect(() => {
+    if (paused || stage === "end" || glDown) releaseLock();
+  }, [paused, stage, glDown, releaseLock]);
   useEffect(() => {
     world.radarRect = stage === "intro" ? null : radar;
     world.arrowRect = arrowRect;
@@ -195,6 +200,7 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
       {live && <ThreatArrows world={world} engine={engine} controls={controls} />}
       <ArenaTutorial
         engine={engine} controls={controls} desktop={desktopInput} active={stage === "tutorial" && !paused}
+        swapHintEnabled={tutorialRan && stage === "play" && !paused}
         bottom={insets.bottom + (desktopInput ? 32 : 200)} onDone={() => setStage("play")} onLaserWide={setLaserWide}
       />
       <Banner owner={engine} />

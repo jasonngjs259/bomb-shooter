@@ -213,6 +213,7 @@ export class ArenaWorld {
     const r = this.arrowRect ?? { x: 0, y: 0, w: this.W, h: this.H };
     const cx = r.x + r.w / 2;
     const cy = r.y + r.h / 2;
+    camera.updateMatrixWorld();
     for (const c of clusters) {
       if (n >= 4) break;
       const px = Math.cos(c.a) * 6.5;
@@ -220,17 +221,25 @@ export class ArenaWorld {
       this.pv.set(px, 0.3, pz).project(camera);
       const behind = this.pv.z > 1;
       if (!behind && Math.abs(this.pv.x) < 0.95 && Math.abs(this.pv.y) < 0.95) continue;
-      const rel = angleDiff(this.chase.yaw, Math.atan2(pz - s.z, px - s.x)); // 0 = ahead, + = right
+      const sx = (this.pv.x * 0.5 + 0.5) * this.W; // projected point (valid in front)
+      const sy = (-this.pv.y * 0.5 + 0.5) * this.H;
+      // on-screen direction to the threat from the view centre, from camera
+      // space (also right for points behind the camera): x right, y down
+      this.mv.set(px, 0.3, pz).applyMatrix4(camera.matrixWorldInverse);
+      let ang = Math.atan2(this.mv.x, this.mv.y); // 0 = up, clockwise
+      if (Math.hypot(this.mv.x, this.mv.y) < 1e-4) ang = angleDiff(this.chase.yaw, Math.atan2(pz - s.z, px - s.x));
       const t = this.threats[n++];
-      t.x = cx + Math.sin(rel) * Math.max(0, r.w / 2 - 28);
-      t.y = cy - Math.cos(rel) * Math.max(0, r.h / 2 - 28);
+      t.x = cx + Math.sin(ang) * Math.max(0, r.w / 2 - 28);
+      t.y = cy - Math.cos(ang) * Math.max(0, r.h / 2 - 28);
       for (const b of this.arrowAvoid) {
         if (t.x > b.x - 28 && t.x < b.x + b.w + 28 && t.y > b.y - 28 && t.y < b.y + b.h + 28) {
           // move vertically out of the box towards the rect centre
           t.y = t.y > cy ? b.y - 30 : b.y + b.h + 30;
         }
       }
-      t.rot = (rel * 180) / Math.PI;
+      // point outward: from the arrow towards the threat's screen position
+      const rot = behind ? ang : Math.atan2(sx - t.x, -(sy - t.y));
+      t.rot = (rot * 180) / Math.PI;
       t.d = c.d;
       t.angle = Math.atan2(pz - s.z, px - s.x);
     }

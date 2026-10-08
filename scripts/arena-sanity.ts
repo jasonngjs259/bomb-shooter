@@ -32,7 +32,7 @@ const ok = (name: string, extra = "") => console.log(`  ok  ${name}${extra ? `  
     assert(e.getPhase() === "playing", "playing after newGame");
     const c = e.getConfig();
     const bombs = idle(e);
-    assert(bombs.length === c.firstLevelBombs && e.getRemaining() === bombs.length, "level 1 bomb count (easier first level)");
+    assert(bombs.length === c.earlyLevels[0].bombs && e.getRemaining() === bombs.length, "level 1 bomb count (gentle first level)");
     const sectors = new Set(bombs.map((b) => Math.floor(((Math.atan2(b.z, b.x) + Math.PI) / (Math.PI * 2)) * 8) % 8));
     assert(sectors.size === 8, `seed ${seed}: field covers all 8 45-deg sectors (got ${sectors.size})`);
     assert(bombs.every((b) => radial(b) - c.bombRadius > c.arenaRadius + 3), "field starts well outside the arena");
@@ -40,11 +40,13 @@ const ok = (name: string, extra = "") => console.log(`  ok  ${name}${extra ? `  
     assert(new Set(bombs.map((b) => b.id)).size === bombs.length, "unique ids");
   }
   const e8 = make(7);
-  e8.newGame({ level: 6 });
-  assert(e8.getRemaining() === 150, "level 6 hits the 150-bomb cap");
+  const counts = [1, 2, 3, 4].map((lv) => (e8.newGame({ level: lv }), e8.getRemaining()));
+  assert(counts.join() === "60,75,90,102", `level curve 60/75/90/102 (got ${counts.join("/")})`);
+  e8.newGame({ level: 8 });
+  assert(e8.getRemaining() === 150, "level 8 hits the 150-bomb cap");
   e8.newGame({ level: 12 });
   assert(e8.getRemaining() === 150 && e8.getLevel() === 12, "cap holds at level 12");
-  ok(`field generated around 360 deg, ${make(1).getRemaining()} bombs at L1, 150 cap from L6`);
+  ok(`field generated around 360 deg, L1-L4 60/75/90/102 bombs, 150 cap from L8`);
 }
 
 // ---- 2. Creep, relaxation, determinism, dt clamp, creep pause ---------------
@@ -257,12 +259,13 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
   const l1 = report("human-ish bot", 1, 1.2, 150);
   const casual = report("casual bot", 1, 2.0, 110);
   report("human-ish bot", 2, 1.2, 150);
+  report("human-ish bot", 3, 1.2, 150);
   assert(l1 >= 0.9 && casual >= 0.6, "level 1 is winnable for first-time players");
 }
 
 // ---- 6. Win state with a one-colour field -----------------------------------
 {
-  const e = make(11, { colorCount: 1, bombCount: 12, firstLevelBombs: 0, ringInner: 7, ringOuter: 8 });
+  const e = make(11, { colorCount: 1, bombCount: 12, earlyLevels: [], ringInner: 7, ringOuter: 8 });
   let won = false;
   e.on("won", () => (won = true));
   e.newGame();
@@ -282,7 +285,7 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
 {
   let checked = 0;
   for (const seed of [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]) {
-    const e = make(seed, { ringInner: 7.1, ringOuter: 8.1, bombCount: 30, firstLevelBombs: 0 });
+    const e = make(seed, { ringInner: 7.1, ringOuter: 8.1, bombCount: 30, earlyLevels: [] });
     e.newGame();
     e.setCreepPaused(true);
     run(e, 0.5); // let the tight test field settle (it can relax over the line)
@@ -320,6 +323,80 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
   }
   assert(checked >= 2, `deflect scenario found (${checked})`);
   ok("non-popping shot inside the border deflects (miss.deflected), only creep loses", `${checked} seeds`);
+}
+
+// ---- 6c. QA r3: a non-popping shot sticking JUST OUTSIDE the line (edge
+// within deflectMargin, e.g. landing centre r 6.48 / edge 6.03) used to stick
+// and end the run within 1 s. It must deflect, with the creep running.
+{
+  let checked = 0;
+  const gaps: number[] = [];
+  for (const seed of [31, 32, 33, 34, 35, 36, 37, 38, 39, 40]) {
+    const e = make(seed, { ringInner: 7.35, ringOuter: 8.35, bombCount: 30, earlyLevels: [] });
+    e.newGame();
+    run(e, 0.3);
+    if (e.getPhase() !== "playing") continue;
+    const c = e.getConfig();
+    let gap = NaN;
+    for (const bomb of idle(e)) {
+      e.aimAt(bomb.x, bomb.z);
+      const ray = e.getAimRay();
+      if (!ray.landing || ray.wouldPopIds.length > 0) continue;
+      const g = radial(ray.landing) - c.bombRadius - c.arenaRadius;
+      if (g > 0 && g <= c.deflectMargin) {
+        gap = g;
+        break;
+      }
+    }
+    if (!Number.isFinite(gap)) continue;
+    let deflected = false;
+    let lostAt = -1;
+    e.on("miss", (m) => (deflected = deflected || m.deflected === true));
+    e.on("gameOver", () => (lostAt = e.getTime()));
+    const t0 = e.getTime();
+    assert(e.fire(), "margin: fired");
+    run(e, 2); // creep keeps running
+    assert(deflected, `seed ${seed}: shot landing ${gap.toFixed(2)} outside the line deflects`);
+    assert(lostAt < 0 || lostAt - t0 > 2, `seed ${seed}: the player's own shot doesn't end the run`);
+    gaps.push(gap);
+    checked++;
+  }
+  assert(checked >= 3, `margin scenario found (${checked})`);
+  ok("shot sticking just outside the line deflects (deflectMargin)", `${checked} seeds, gaps ${gaps.map((g) => g.toFixed(2)).join(" ")}`);
+
+  // Grace: with no margin, a stuck shot that ends up over the line can't
+  // end the game for stuckGrace seconds; creeping bombs still can.
+  let graced = 0;
+  for (const seed of [41, 42, 43, 44, 45, 46, 47, 48]) {
+    const e = make(seed, { ringInner: 7.1, ringOuter: 8.1, bombCount: 30, earlyLevels: [], deflectMargin: -10 });
+    e.newGame();
+    e.setCreepPaused(true);
+    run(e, 0.3);
+    if (e.getPhase() !== "playing") continue;
+    const c = e.getConfig();
+    let found = false;
+    for (const bomb of idle(e)) {
+      e.aimAt(bomb.x, bomb.z);
+      const ray = e.getAimRay();
+      if (ray.landing && ray.wouldPopIds.length === 0 && radial(ray.landing) - c.bombRadius < c.arenaRadius - 0.05) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) continue;
+    let stuckAt = -1;
+    let lostAt = -1;
+    e.on("stick", () => (stuckAt = e.getTime()));
+    e.on("gameOver", () => (lostAt = e.getTime()));
+    e.fire();
+    run(e, 3);
+    if (stuckAt < 0) continue;
+    assert(lostAt > 0, `seed ${seed}: a stuck shot over the line still loses after the grace`);
+    assert(lostAt - stuckAt >= c.stuckGrace - 1e-6, `seed ${seed}: no game over during the ${c.stuckGrace}s grace (${(lostAt - stuckAt).toFixed(2)}s)`);
+    graced++;
+  }
+  assert(graced >= 2, `grace scenario found (${graced})`);
+  ok("freshly stuck shot can't end the game for stuckGrace", `${graced} seeds`);
 }
 
 // ---- 7. Perf: 150 bombs --------------------------------------------------------

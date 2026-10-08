@@ -45,16 +45,17 @@ export interface ArenaConfig {
 
   ringInner: number; // level 1 field annulus (bomb centres)
   ringOuter: number;
-  bombCount: number; // base bomb count (level n = bombCount + (n-1) * bombsPerLevel)
-  firstLevelBombs: number; // easier level 1 bomb count (0 = use bombCount)
-  firstLevelCreepScale: number; // level 1 creep speed multiplier
+  bombCount: number; // bombs at the first level after earlyLevels (then +bombsPerLevel)
+  // Gentler first levels (index 0 = level 1): their bomb count and creep
+  // multiplier. Later levels: bombCount + k * bombsPerLevel, creepSpeed + k * creepPerLevel.
+  earlyLevels: { bombs: number; creepScale: number }[];
   bombsPerLevel: number; // extra bombs per level above 1
   maxBombs: number; // hard cap on the generated field size
   clumpMin: number; // layout clumps of same-colour bombs
   clumpMax: number;
   blobClumpsMax: number; // touching clumps (different colours) per layout blob
 
-  creepSpeed: number; // level 1 base inward speed, units / s
+  creepSpeed: number; // base inward speed at the first post-early level, units / s
   creepPerLevel: number; // extra base speed per level above 1
   creepDistanceFactor: number; // speed *= 1 + factor * (dist - arenaRadius)
   surgeInterval: number; // seconds between creep surges
@@ -65,6 +66,8 @@ export interface ArenaConfig {
   knockbackDamping: number; // kick decay rate, 1 / s
 
   dangerRange: number; // gap (bomb edge to border) at which danger starts
+  deflectMargin: number; // a non-popping shot whose edge would stick within this of the border deflects
+  stuckGrace: number; // seconds a freshly stuck shot can't trigger game over
   popDuration: number; // seconds a popping bomb fades
   shatterDuration: number; // seconds a shattering bomb drifts + fades
   shatterSpeed: number; // outward drift speed of shattering bombs

@@ -9,21 +9,24 @@ import type { ArenaConfig } from "./types";
  * ARENA 360 RULES (numbers = ARENA_CONFIG defaults, all overridable).
  * Read with ArenaEngine.ts (API) and types.ts (data shapes).
  *
- *   Field    L1 (first-timer friendly): 60 bombs, creep x0.85. L2+: base 90
- *            bombs in an annulus r=10.5..16.5 around the full 360 deg,
+ *   Field    Gentle start: L1 60 bombs (creep x0.85), L2 75 (x0.92), L3 90
+ *            (x1), then +12 per level; bombs in an annulus r=10.5..16.5 (L3)
+ *            around the full 360 deg,
  *            in blobs of 1-2 touching clumps; a clump = 2-4 same-colour
  *            bombs; touching clumps never share a colour. Level n adds 12
  *            bombs (cap 150, reached at L6), the annulus grows outward at the
  *            same density, and base creep +0.01 u/s.
  *   Creep    every idle bomb moves radially inwards at
- *            base * (1 + 0.05 * (dist - arenaRadius)); base = 0.035 u/s at L1,
+ *            base * (1 + 0.05 * (dist - arenaRadius)); base = 0.035 u/s at L3
+ *            (x0.85 at L1, x0.92 at L2, +0.01 per level after L3),
  *            +0.008 every 20 s of play (a "creepSurge"). Far bombs are faster,
  *            so the field compresses into a wall; circles never overlap
- *            (4 relaxation passes per update). Idle L1 loss: ~66-73 s.
+ *            (4 relaxation passes per update).
  *   Lose     any idle bomb with dist - radius <= arenaRadius -> gameOver.
- *            Only creep loses: a shot that would stick on/inside the border
-            without popping deflects instead ("miss", deflected: true,
-            combo reset).
+ *            Only creep loses: a shot that would NOT pop and would stick
+ *            with its edge within deflectMargin (1.0) of the border deflects
+ *            ("miss", deflected: true, combo reset), and a freshly stuck shot
+ *            can't end the game for stuckGrace (1.5 s).
  *   Move     3 u/s top speed, accel 24 / decel 30 u/s^2, centre clamped to
  *            arenaRadius - 0.4 (sliding along the border).
  *   Shoot    fire() needs phase "playing", no shot in flight and the 0.25 s
@@ -68,8 +71,10 @@ export const ARENA_CONFIG: ArenaConfig = {
   ringInner: 10.5,
   ringOuter: 16.5,
   bombCount: 90,
-  firstLevelBombs: 60,
-  firstLevelCreepScale: 0.85,
+  earlyLevels: [
+    { bombs: 60, creepScale: 0.85 },
+    { bombs: 75, creepScale: 0.92 },
+  ],
   bombsPerLevel: 12,
   maxBombs: 150,
   clumpMin: 2,
@@ -87,6 +92,8 @@ export const ARENA_CONFIG: ArenaConfig = {
   knockbackDamping: 3,
 
   dangerRange: 3,
+  deflectMargin: 1.0,
+  stuckGrace: 1.5,
   popDuration: 0.3,
   shatterDuration: 0.7,
   shatterSpeed: 3,
@@ -109,13 +116,14 @@ export interface LevelParams {
 // outward), +creepPerLevel base speed.
 export function levelParams(c: ArenaConfig, level: number): LevelParams {
   const lv = Math.max(1, Math.floor(level));
-  const easy = lv === 1 && c.firstLevelBombs > 0;
-  const count = easy ? Math.min(c.maxBombs, c.firstLevelBombs) : Math.min(c.maxBombs, c.bombCount + (lv - 1) * c.bombsPerLevel);
+  const early = c.earlyLevels[lv - 1];
+  const k = lv - 1 - c.earlyLevels.length; // steps past the early levels
+  const count = Math.min(c.maxBombs, early ? early.bombs : c.bombCount + k * c.bombsPerLevel);
   const inner = c.ringInner;
   const baseArea = c.ringOuter ** 2 - inner ** 2;
   const outer = Math.sqrt(inner ** 2 + (baseArea * count) / c.bombCount);
-  const creep = c.creepSpeed + (lv - 1) * c.creepPerLevel;
-  return { level: lv, count, inner, outer, creepSpeed: easy ? creep * c.firstLevelCreepScale : creep };
+  const creepSpeed = early ? c.creepSpeed * early.creepScale : c.creepSpeed + k * c.creepPerLevel;
+  return { level: lv, count, inner, outer, creepSpeed };
 }
 
 const randInt = (lo: number, hi: number, rand: RandomFn) => Math.floor(lo + rand() * (hi - lo + 1));

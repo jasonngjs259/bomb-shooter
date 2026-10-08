@@ -11,7 +11,7 @@
 import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { Platform, View } from "react-native";
 import type { ArenaEngine } from "../game/arena";
-import type { ArenaWorld } from "../render/arena/ArenaWorld";
+import type { ArenaWorld, Box } from "../render/arena/ArenaWorld";
 import { getSettings } from "../ui/settings";
 import { ArenaControls } from "./ArenaControls";
 import { biggestThreat } from "./arenaMath";
@@ -27,6 +27,9 @@ interface Options {
   onPause: () => void; // toggle
   onIdleKey: () => void; // Space / Enter while play isn't live (intro skip, end card)
   rootRef: RefObject<View | null>; // the arena root view = the bare playfield
+  // UI drawn without its own hit-testable view (GL radar, pass-through
+  // legend) plus HUD cards, in container px: never turn or fire over these
+  uiBoxes: Box[];
 }
 
 const EDGE_BAND = 0.15;
@@ -114,7 +117,14 @@ export function useArenaDesktopControls(o: Options) {
     const onBlur = () => latest.current.controls.clear();
     // RN-web: a View ref is its DOM element. Overlays that ignore pointer
     // events (texts, canvas) let the root be the event target.
-    const onPlayfield = (t: EventTarget | null) => t !== null && t === (latest.current.rootRef.current as unknown as EventTarget | null);
+    const onPlayfield = (e: MouseEvent) => {
+      const root = latest.current.rootRef.current as unknown as HTMLElement | null;
+      if (!root || e.target !== root) return false;
+      const r = root.getBoundingClientRect();
+      const x = e.clientX - r.left;
+      const y = e.clientY - r.top;
+      return !latest.current.uiBoxes.some((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+    };
     const onMove = (e: MouseEvent) => {
       const { controls, active } = latest.current;
       if (!active) return;
@@ -124,12 +134,12 @@ export function useArenaDesktopControls(o: Options) {
         const half = window.innerWidth / 2;
         const off = (e.clientX - half) / half;
         const edge = Math.abs(off) - (1 - EDGE_BAND);
-        controls.cursorTurn = onPlayfield(e.target) && edge > 0 ? Math.sign(off) * Math.min(1, edge / EDGE_BAND) : 0;
+        controls.cursorTurn = onPlayfield(e) && edge > 0 ? Math.sign(off) * Math.min(1, edge / EDGE_BAND) : 0;
       }
     };
     const onDown = (e: MouseEvent) => {
       const { engine, active } = latest.current;
-      if (!active || lockRef.current === "none" || (lockRef.current === "fallback" && !onPlayfield(e.target))) return;
+      if (!active || lockRef.current === "none" || (lockRef.current === "fallback" && !onPlayfield(e))) return;
       if (e.button === 0) engine.fire();
       else if (e.button === 2) engine.swapBomb();
     };

@@ -113,7 +113,11 @@ export class ArenaFx {
         this.later(0.1, () => this.anim(true, centre.x, 0.085, centre.z, 0.5, 0.2, reach, this.dust, 0.5));
         const s = this.project(centre.x, 1.2, centre.z);
         this.bus.emit("floatText", { x: s.x, y: s.y, text: `+${score}`, kind: "score" });
-        if (combo >= 2) this.bus.emit("floatText", { x: s.x, y: s.y - 34, text: `x${combo} COMBO!`, kind: "combo", combo });
+        // combo label stacked well above the score; skipped on the clearing
+        // pop, where the ARENA CLEAR! banner takes over
+        if (combo >= 2 && this.engine.getRemaining() > 0) {
+          this.bus.emit("floatText", { x: s.x, y: s.y - 72, text: `x${combo} COMBO!`, kind: "combo", combo });
+        }
         if (big) haptics.heavy();
         else haptics.medium();
       }),
@@ -133,8 +137,11 @@ export class ArenaFx {
         // the shot bounced off at the border line: spark + "DEFLECT"
         this.anim(true, x, 0.1, z, 0.3, 0.2, 1.1, this.white, 0.9);
         this.anim(false, x, 0.45, z, 0.12, 0, 0.6, this.white, 1);
-        const sp = this.project(x, 1.0, z);
-        this.bus.emit("floatText", { x: sp.x, y: sp.y, text: "DEFLECT", kind: "drop" });
+        // big screen-space pop above the stickman (not at the far border,
+        // where it hid behind his head)
+        const sh = this.engine.getShooter();
+        const sp = this.project(sh.x, 2.4, sh.z);
+        this.bus.emit("floatText", { x: sp.x, y: sp.y - 30, text: "DEFLECT", kind: "combo", combo: 2 });
         for (let i = 0; i < this.n(8); i++) {
           const a = rand(0, Math.PI * 2);
           this.spawn(x, 0.45, z, Math.cos(a) * rand(2, 5), rand(1, 4), Math.sin(a) * rand(2, 5), 0.25, 0.1, this.white, this.dust, -6, 0.92);

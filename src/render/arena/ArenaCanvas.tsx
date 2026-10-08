@@ -13,7 +13,7 @@ import { useSettings } from "../../ui/settings";
 import { rendererStatus, useRendererStatus } from "../status";
 import { GameCanvas } from "../three/GameCanvas";
 import { GLErrorBoundary } from "../three/GLErrorBoundary";
-import { renderNoPresent } from "../three/renderer";
+import { renderArenaFrame } from "./renderPasses";
 import { ArenaWorld } from "./ArenaWorld";
 
 function ArenaScene({ world }: { world: ArenaWorld }) {
@@ -26,26 +26,9 @@ function ArenaScene({ world }: { world: ArenaWorld }) {
   }, [quality, setDpr]);
 
   useFrame((state, delta) => {
-    const { gl, scene } = state;
     const camera = state.camera as PerspectiveCamera;
     world.frame(camera, delta, state.viewport.dpr);
-    const r = world.radarRect;
-    gl.autoClear = true;
-    if (!r) {
-      gl.render(scene, camera);
-      return;
-    }
-    renderNoPresent(gl, scene, camera);
-    const y = state.size.height - r.y - r.size;
-    gl.autoClear = false;
-    gl.clearDepth();
-    gl.setViewport(r.x, y, r.size, r.size);
-    gl.setScissor(r.x, y, r.size, r.size);
-    gl.setScissorTest(true);
-    gl.render(world.radar.scene, world.radar.camera);
-    gl.setScissorTest(false);
-    gl.setViewport(0, 0, state.size.width, state.size.height);
-    gl.autoClear = true;
+    renderArenaFrame(state.gl, state.scene, camera, world.radar, world.radarRect, state.size);
   }, 1);
 
   return <primitive object={world.root} />;

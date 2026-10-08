@@ -31,7 +31,7 @@
  *
  * EVENTS (on(name, cb) returns unsubscribe; payloads: ArenaEvents in types.ts):
  *   shoot, stick, pop, shatter, miss (deflected: true = a non-popping shot that
- *   would sit on/inside the border bounced off), creepSurge, dangerChanged, swap,
+ *   would sit within deflectMargin of the border bounced off), creepSurge, dangerChanged, swap,
  *   gameOver, won, scoreChanged, phaseChanged.
  * RULES + tuned numbers: next to ARENA_CONFIG in arenaLayout.ts.
  * PHASES: title -> playing -> gameOver | won   (newGame() from any phase)
@@ -44,7 +44,7 @@ import { GroupFinder } from "./arenaMatch";
 import { ARENA_CONFIG, ARENA_MAX_DT, WORLD_HALF_EXTENT, generateField, levelParams, makeBomb } from "./arenaLayout";
 import { RayHit, SimBomb, SpatialGrid, raycastBombs, separateOne } from "./arenaPhysics";
 import {
-  animateFx, applyKnockback, borderGap, centroid, closestToBorder, dangerFromGap, dangerSectors, findOrphans, hasColor,
+  animateFx, applyKnockback, borderGap, centroid, closestToBorder, loseCandidate, dangerFromGap, dangerSectors, findOrphans, hasColor,
   pickPresentColor, startShatter, stepCreep, stepShooter, updateMuzzle, wrapAngle,
 } from "./arenaSim";
 import {
@@ -314,8 +314,8 @@ export class ArenaEngine {
   }
 
   // The shot touched `target`: seat it as a field bomb, then match. A shot
-  // that would NOT pop and whose edge would sit on/inside the border line
-  // deflects instead ("miss" with deflected: true): only creep loses games.
+  // that would NOT pop and whose edge would sit within deflectMargin of the
+  // border deflects instead ("miss", deflected: true): only creep loses.
   private stick(target: SimBomb) {
     const s = this.shot!;
     this.shot = null;
@@ -325,7 +325,7 @@ export class ArenaEngine {
     this.grid.build(this.active);
     const group = this.finder.group(this.active, this.grid, this.active.length - 1, this.link, true);
     const pops = group.length >= this.config.minMatch;
-    if (!pops && borderGap(b, this.config) <= 0) {
+    if (!pops && borderGap(b, this.config) <= this.config.deflectMargin) {
       this.active.pop();
       this.combo = 0;
       this.events.emit("miss", { x: b.x, z: b.z, deflected: true });
@@ -382,8 +382,8 @@ export class ArenaEngine {
       this.dangerTier = tier;
       this.events.emit("dangerChanged", { level: this.danger, tier, previousTier });
     }
-    const b = this.closest;
-    if (b && this.minGap <= 0) {
+    const b = loseCandidate(this.active, this.config);
+    if (b) {
       this.shot = null;
       this.setPhase("gameOver");
       this.events.emit("gameOver", { score: this.score, x: b.x, z: b.z, angle: Math.atan2(b.z, b.x), bombId: b.id });

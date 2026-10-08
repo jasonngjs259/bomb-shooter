@@ -38,7 +38,7 @@ const PLAYING = new Set(["ready", "shooting", "resolving"]);
 
 const LAST_MODE_KEY = "bs.lastMode";
 
-export function GameScreen({ onArena }: { onArena: () => void }) {
+export function GameScreen({ onArena, autoStart = false }: { onArena: () => void; autoStart?: boolean }) {
   const { engine, frame } = useGameEngine();
   const insets = useSafeAreaInsets();
   const win = useWindowDimensions();
@@ -69,11 +69,16 @@ export function GameScreen({ onArena }: { onArena: () => void }) {
   // Title + Classic are portrait on phones; mode memory for the title
   useEffect(() => {
     void lockPortrait();
+    if (autoStart) {
+      setSelected("classic");
+      AsyncStorage.setItem(LAST_MODE_KEY, "classic").catch(() => undefined);
+      engine.newGame();
+    }
     let alive = true;
     AsyncStorage.multiGet([LAST_MODE_KEY, ARENA_PLAYED_KEY])
       .then(([[, last], [, played]]) => {
         if (!alive) return;
-        if (last === "arena" || last === "classic") setSelected(last);
+        if (!autoStart && (last === "arena" || last === "classic")) setSelected(last);
         setArenaNew(played === null);
       })
       .catch(() => undefined);
