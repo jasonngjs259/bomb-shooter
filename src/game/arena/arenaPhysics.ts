@@ -9,6 +9,7 @@ export interface SimBomb extends ArenaBomb {
   kick: number; // outward radial speed from knock-back (decays)
   vx: number; // drift velocity while shattering
   vz: number;
+  clump: number; // layout clump index (specials never share one), -1 for stuck shots / spawned bombs
 }
 
 // ---- Spatial grid -------------------------------------------------------------

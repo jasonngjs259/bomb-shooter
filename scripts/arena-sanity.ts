@@ -40,13 +40,12 @@ const ok = (name: string, extra = "") => console.log(`  ok  ${name}${extra ? `  
     assert(new Set(bombs.map((b) => b.id)).size === bombs.length, "unique ids");
   }
   const e8 = make(7);
-  const counts = [1, 2, 3, 4].map((lv) => (e8.newGame({ level: lv }), e8.getRemaining()));
-  assert(counts.join() === "60,75,90,102", `level curve 60/75/90/102 (got ${counts.join("/")})`);
-  e8.newGame({ level: 8 });
-  assert(e8.getRemaining() === 150, "level 8 hits the 150-bomb cap");
-  e8.newGame({ level: 12 });
-  assert(e8.getRemaining() === 150 && e8.getLevel() === 12, "cap holds at level 12");
-  ok(`field generated around 360 deg, L1-L4 60/75/90/102 bombs, 150 cap from L8`);
+  const counts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((lv) => (e8.newGame({ level: lv }), e8.getRemaining()));
+  const want = "60,75,48,90,102,60,114,126,72,138,150,84"; // LEVELS table (L3/6/9/12 = boss rings)
+  assert(counts.join() === want, `level curve ${want} (got ${counts.join(",")})`);
+  e8.newGame({ level: 14 });
+  assert(e8.getRemaining() === 150 && e8.getLevel() === 14, "150 cap holds at level 14");
+  ok(`field generated around 360 deg, L1-L12 ${counts.join("/")} bombs, 150 cap`);
 }
 
 // ---- 2. Creep, relaxation, determinism, dt clamp, creep pause ---------------
@@ -151,7 +150,8 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
   e.on("pop", (p) => {
     r.pops++;
     r.maxCombo = Math.max(r.maxCombo, p.combo);
-    assert(p.bombs.length >= c.minMatch && p.score > 0, "pop payload");
+    // armored bombs count toward the match but stay (armorBroken), so a pop can list fewer than minMatch
+    assert(p.bombs.length >= 1 && p.score > 0, "pop payload");
     const popped = new Set(p.bombs.map((b) => b.id));
     if (predicted.length > 0) {
       r.predictTotal++;
@@ -258,14 +258,13 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
   };
   const l1 = report("human-ish bot", 1, 1.2, 150);
   const casual = report("casual bot", 1, 2.0, 110);
-  report("human-ish bot", 2, 1.2, 150);
-  report("human-ish bot", 3, 1.2, 150);
+  report("human-ish bot", 2, 1.2, 150); // L3+ (boss, specials): scripts/arena-balance.ts
   assert(l1 >= 0.9 && casual >= 0.6, "level 1 is winnable for first-time players");
 }
 
 // ---- 6. Win state with a one-colour field -----------------------------------
 {
-  const e = make(11, { colorCount: 1, bombCount: 12, earlyLevels: [], ringInner: 7, ringOuter: 8 });
+  const e = make(11, { colorCount: 1, bombCount: 12, earlyLevels: [{ bombs: 12, creepScale: 1 }], ringInner: 7, ringOuter: 8 });
   let won = false;
   e.on("won", () => (won = true));
   e.newGame();
@@ -402,7 +401,7 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
 // ---- 7. Perf: 150 bombs --------------------------------------------------------
 {
   const e = make(99);
-  e.newGame({ level: 9 });
+  e.newGame({ level: 11 }); // 150 bombs, counter-rotating double ring (boss perf: arena-fun-sanity.ts)
   for (let i = 0; i < 60; i++) e.update(DT); // warm up
   const n = 1200;
   const t0 = performance.now();

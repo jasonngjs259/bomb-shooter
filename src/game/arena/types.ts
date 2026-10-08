@@ -1,4 +1,5 @@
 import type { ArenaEngine } from "./ArenaEngine";
+import type { ArenaFunEvents, BombKind, LevelBest, LevelDef, PowerKind } from "./funTypes";
 
 // Arena 360 shared types. Plain data only, so any renderer (three.js, Skia,
 // RN Views) can consume them and the engine stays framework-free.
@@ -85,6 +86,12 @@ export interface ArenaBomb {
   alpha: number; // 1 while idle, fades to 0 while popping/shattering
   age: number; // seconds since the bomb entered its current state
   stuck: boolean; // true if it was a shot that stuck (age = time since stick)
+  kind: BombKind; // "normal" | "armored" | "ticking" | "roller" (wall roller before it launches)
+  armor: 0 | 1; // armored: 1 until the first match strips it (then kind stays "armored", armor 0)
+  band: 0 | 1; // double ring: 0 inner band, 1 outer band (single ring: 0)
+  timer: number | null; // ticking: s left once armed (tickTimer before arming); null otherwise
+  armed: boolean; // ticking: countdown running
+  telegraph: number; // roller: s until it detaches (shaking), -1 = not telegraphing
 }
 
 export interface ShooterState {
@@ -102,12 +109,16 @@ export interface ShooterState {
 }
 
 export interface ShotState {
+  id: number; // stable while in flight
   x: number;
   z: number;
   dirX: number; // unit direction
   dirZ: number;
   colorIndex: number;
   travelled: number; // units since the muzzle (fizzles at shotRange)
+  speed: number; // units / s (fever shots are faster)
+  power: PowerKind | null; // a loaded POWER shot (colorIndex is then the displaced current colour)
+  wild: boolean; // fever: takes the colour of whatever it hits
 }
 
 export interface AimRay {
@@ -118,6 +129,10 @@ export interface AimRay {
   // Ids of field bombs that would pop if the current bomb stuck at `landing`
   // (same-colour group incl. the shot >= minMatch). Empty if none.
   wouldPopIds: number[];
+  // What the ray reaches first: a field bomb, a rolling roller, a boss shield
+  // bomb or the boss core (null = nothing within range), and its id.
+  target: "bomb" | "roller" | "shield" | "core" | null;
+  targetId: number | null;
 }
 
 export interface FxBomb {
@@ -129,7 +144,7 @@ export interface FxBomb {
 
 // ---- Events -----------------------------------------------------------------
 
-export interface ArenaEvents {
+export interface ArenaEvents extends ArenaFunEvents {
   shoot: { x: number; z: number; yaw: number; colorIndex: number };
   stick: { id: number; x: number; z: number; colorIndex: number; hitId: number };
   pop: { bombs: FxBomb[]; score: number; combo: number; centre: Vec2XZ };
@@ -151,6 +166,8 @@ export type ArenaEventName = keyof ArenaEvents;
 export interface NewGameOptions {
   level?: number; // 1-based, default 1
   keepScore?: boolean; // carry the score over (level progression)
+  levelDef?: LevelDef; // override the LEVELS table (tests / LEVELS-tab experiments)
+  best?: LevelBest; // persisted bests for this level -> levelStars.newBest
 }
 
 // The subset of the engine a renderer may read (no commands).
@@ -176,4 +193,17 @@ export type ArenaEngineView = Pick<
   | "getRemaining"
   | "getTime"
   | "getRevision"
+  | "getLevelDef"
+  | "getPickups"
+  | "getPowerSlot"
+  | "getFreeze"
+  | "getFever"
+  | "getShots"
+  | "getRollers"
+  | "getRoll"
+  | "getStun"
+  | "getBoss"
+  | "getTimeScale"
+  | "getStarProgress"
+  | "getBestCombo"
 >;

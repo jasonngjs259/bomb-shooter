@@ -38,6 +38,15 @@ export function stepShooter(s: ShooterState, input: Vec2XZ, c: ArenaConfig, dt: 
   if (Math.abs(s.vz) < 1e-6 && tz === 0) s.vz = s.az = 0;
   s.x += s.vx * dt;
   s.z += s.vz * dt;
+  clampShooter(s, c);
+  s.moving = Math.hypot(s.vx, s.vz) > MOVING_SPEED;
+  s.cooldown = Math.max(0, s.cooldown - dt);
+  updateMuzzle(s, c);
+}
+
+// Keep the body inside the arena, sliding along the border (drops only the
+// outward velocity / acceleration).
+export function clampShooter(s: ShooterState, c: ArenaConfig) {
   const lim = c.arenaRadius - c.shooterRadius, d = Math.hypot(s.x, s.z);
   if (d > lim) {
     const nx = s.x / d, nz = s.z / d;
@@ -54,10 +63,9 @@ export function stepShooter(s: ShooterState, input: Vec2XZ, c: ArenaConfig, dt: 
       s.az -= outA * nz;
     }
   }
-  s.moving = Math.hypot(s.vx, s.vz) > MOVING_SPEED;
-  s.cooldown = Math.max(0, s.cooldown - dt);
-  updateMuzzle(s, c);
 }
+
+export const isMoving = (s: ShooterState) => Math.hypot(s.vx, s.vz) > MOVING_SPEED;
 
 // Radial creep (faster further out) + decaying knock-back kick, then relax.
 export function stepCreep(
@@ -83,10 +91,13 @@ export function animateFx(bombs: SimBomb[], c: ArenaConfig, dt: number) {
   for (const b of bombs) {
     b.age += dt;
     if (b.state !== "idle") {
+      // A negative age is a start delay (boss-kill chain shatter): hold still at alpha 1
       const life = b.state === "popping" ? c.popDuration : c.shatterDuration;
-      b.x += b.vx * dt;
-      b.z += b.vz * dt;
-      b.alpha = Math.max(0, 1 - b.age / life);
+      if (b.age > 0) {
+        b.x += b.vx * dt;
+        b.z += b.vz * dt;
+      }
+      b.alpha = Math.min(1, Math.max(0, 1 - b.age / life));
       if (b.alpha <= 0) continue;
     }
     bombs[w++] = b;

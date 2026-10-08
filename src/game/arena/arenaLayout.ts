@@ -4,6 +4,7 @@ import { BOMB_COLORS } from "../constants";
 import type { RandomFn } from "../grid";
 import { SimBomb, SpatialGrid, relaxBombs } from "./arenaPhysics";
 import type { ArenaConfig } from "./types";
+import { BandSpec, levelDef } from "./arenaLevels";
 
 /*
  * ARENA 360 RULES (numbers = ARENA_CONFIG defaults, all overridable).
@@ -115,18 +116,12 @@ export interface LevelParams {
   creepSpeed: number; // base inward speed before surges
 }
 
-// Level n: +bombsPerLevel bombs (capped), same density (the annulus grows
-// outward), +creepPerLevel base speed.
+// Level n field size and base creep (from the LEVELS table, arenaLevels.ts).
+// Kept for older callers; the engine uses levelDef() + fieldBands().
 export function levelParams(c: ArenaConfig, level: number): LevelParams {
-  const lv = Math.max(1, Math.floor(level));
-  const early = c.earlyLevels[lv - 1];
-  const k = lv - 1 - c.earlyLevels.length; // steps past the early levels
-  const count = Math.min(c.maxBombs, early ? early.bombs : c.bombCount + k * c.bombsPerLevel);
-  const inner = c.ringInner;
-  const baseArea = c.ringOuter ** 2 - inner ** 2;
-  const outer = Math.sqrt(inner ** 2 + (baseArea * count) / c.bombCount);
-  const creepSpeed = early ? c.creepSpeed * early.creepScale : c.creepSpeed + k * c.creepPerLevel;
-  return { level: lv, count, inner, outer, creepSpeed };
+  const d = levelDef(c, level);
+  const outer = Math.sqrt(c.ringInner ** 2 + ((c.ringOuter ** 2 - c.ringInner ** 2) * d.bombs) / c.bombCount);
+  return { level: d.level, count: d.bombs, inner: c.ringInner, outer, creepSpeed: d.creepBase };
 }
 
 const randInt = (lo: number, hi: number, rand: RandomFn) => Math.floor(lo + rand() * (hi - lo + 1));
@@ -137,7 +132,8 @@ const blocked = (bombs: readonly SimBomb[], x: number, z: number, minDist: numbe
 };
 
 export const makeBomb = (id: number, x: number, z: number, colorIndex: number, stuck = false): SimBomb => ({
-  id, x, z, colorIndex, state: "idle", alpha: 1, age: 0, stuck, kick: 0, vx: 0, vz: 0,
+  id, x, z, colorIndex, state: "idle", alpha: 1, age: 0, stuck, kind: "normal", armor: 0, band: 0, timer: null,
+  armed: false, telegraph: -1, kick: 0, vx: 0, vz: 0, clump: -1,
 });
 
 // Clump sizes summing to `count` (never leaves a lone 1 unless count is 1).
@@ -153,8 +149,17 @@ function clumpSizes(c: ArenaConfig, count: number, rand: RandomFn): number[] {
   return sizes;
 }
 
+const angDist = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+
+// Inside one of the band's angular gaps (with the bomb's own half-width)?
+function inGap(band: BandSpec, x: number, z: number, r: number) {
+  if (band.gaps.length === 0) return false;
+  const d = Math.hypot(x, z), a = Math.atan2(z, x), pad = Math.asin(Math.min(1, r / Math.max(d, r)));
+  return band.gaps.some((g) => angDist(a, g.angle) < g.half + pad);
+}
+
 // Spot touching one of `from` (random), free of overlaps, near the annulus.
-function adjacentSpot(from: readonly SimBomb[], all: readonly SimBomb[][], p: LevelParams, r: number, rand: RandomFn) {
+function adjacentSpot(from: readonly SimBomb[], all: readonly SimBomb[][], p: BandSpec, r: number, rand: RandomFn) {
   let x = 0, z = 0;
   for (let tries = 0; tries < 24; tries++) {
     const f = from[randInt(0, from.length - 1, rand)];
@@ -162,19 +167,37 @@ function adjacentSpot(from: readonly SimBomb[], all: readonly SimBomb[][], p: Le
     x = f.x + Math.cos(a) * r * 2.02;
     z = f.z + Math.sin(a) * r * 2.02;
     const d = Math.hypot(x, z);
-    if (d >= p.inner - r && d <= p.outer + 2 * r && all.every((g) => !blocked(g, x, z, r * 2))) break;
+    if (d >= p.inner - r && d <= p.outer + 2 * r && !inGap(p, x, z, r) && all.every((g) => !blocked(g, x, z, r * 2))) break;
   }
   return { x, z };
 }
 
-// Build the level's field around the full 360 degrees. The field is made of
-// BLOBS (one angular sector each, random area-uniform radius in the annulus);
-// a blob is 1..blobClumpsMax touching CLUMPS of different colours, and a
-// clump is clumpMin..clumpMax touching bombs of one colour. Clumps avoid the
-// colours of any bomb within 3 units, so starting groups stay small and
-// popping one clump can orphan a small neighbour clump. Ids from `firstId`.
-export function generateField(c: ArenaConfig, level: number, rand: RandomFn, firstId: number): SimBomb[] {
-  const p = levelParams(c, level);
+// u in [0, 1) -> an angle outside the band's gaps (area-uniform over the allowed arc).
+function gapFreeAngle(band: BandSpec, u: number) {
+  const gaps = [...band.gaps].sort((a, b) => a.angle - b.angle);
+  const segs = gaps.map((g, i) => {
+    const next = gaps[(i + 1) % gaps.length];
+    let end = next.angle - next.half;
+    const from = g.angle + g.half;
+    while (end <= from) end += Math.PI * 2;
+    return { from, len: end - from };
+  });
+  const total = segs.reduce((s, x) => s + x.len, 0);
+  let t = u * total;
+  for (const s of segs) {
+    if (t < s.len) return s.from + t;
+    t -= s.len;
+  }
+  return segs[0].from;
+}
+
+// Build one band of the field. The field is made of BLOBS (one angular
+// sector each, random area-uniform radius in the annulus); a blob is
+// 1..blobClumpsMax touching CLUMPS of different colours, and a clump is
+// clumpMin..clumpMax touching bombs of one colour. Clumps avoid the colours of
+// any bomb within 3 units, so starting groups stay small and popping one
+// clump can orphan a small neighbour clump.
+function generateBand(c: ArenaConfig, p: BandSpec, rand: RandomFn, firstId: number, placed: SimBomb[][]): SimBomb[] {
   const r = c.bombRadius;
   const sizes = clumpSizes(c, p.count, rand);
   const blobs: number[][] = []; // clump sizes per blob
@@ -183,8 +206,8 @@ export function generateField(c: ArenaConfig, level: number, rand: RandomFn, fir
     blobs.push(sizes.slice(k, k + n));
     k += n;
   }
-  const placed: SimBomb[][] = []; // one entry per clump
-  const offset = rand() * Math.PI * 2;
+  const offset = p.gaps.length === 0 ? rand() * Math.PI * 2 : 0;
+  const first = placed.length;
   let id = firstId;
 
   blobs.forEach((blob, bi) => {
@@ -195,7 +218,8 @@ export function generateField(c: ArenaConfig, level: number, rand: RandomFn, fir
         seed = adjacentSpot(blobBombs, [...placed, blobBombs], p, r, rand);
       } else {
         for (let tries = 0; tries < 30; tries++) {
-          const a = offset + ((bi + rand()) / blobs.length) * Math.PI * 2;
+          const u = (bi + rand()) / blobs.length;
+          const a = p.gaps.length === 0 ? offset + u * Math.PI * 2 : gapFreeAngle(p, u);
           const rad = Math.sqrt(p.inner ** 2 + rand() * (p.outer ** 2 - p.inner ** 2));
           seed = { x: Math.cos(a) * rad, z: Math.sin(a) * rad };
           if (placed.every((g) => !blocked(g, seed.x, seed.z, r * 2 * 1.8))) break;
@@ -214,13 +238,62 @@ export function generateField(c: ArenaConfig, level: number, rand: RandomFn, fir
         const s = adjacentSpot(clump, [...placed, blobBombs, clump], p, r, rand);
         clump.push(makeBomb(id++, s.x, s.z, color));
       }
+      for (const b of clump) {
+        b.clump = placed.length;
+        b.band = p.band;
+      }
       placed.push(clump);
       blobBombs.push(...clump);
     }
   });
+  return placed.slice(first).flat();
+}
 
-  // Remove any residual overlap from fallback placements
+// Push any bomb sitting in a gap to the nearest gap edge, and (multi-band
+// fields) back inside its band's radial range (fallback placements).
+function clearGaps(bombs: readonly SimBomb[], band: BandSpec, r: number, radial: boolean) {
+  for (const b of bombs) {
+    if (radial) {
+      const d = Math.hypot(b.x, b.z), lim = Math.min(Math.max(d, band.inner - r), band.outer + r);
+      if (lim !== d) {
+        b.x *= lim / d;
+        b.z *= lim / d;
+      }
+    }
+    const d = Math.hypot(b.x, b.z), a = Math.atan2(b.z, b.x);
+    const pad = Math.asin(Math.min(1, r / Math.max(d, r))) + 0.01;
+    for (const g of band.gaps) {
+      const diff = Math.atan2(Math.sin(a - g.angle), Math.cos(a - g.angle));
+      if (Math.abs(diff) >= g.half + pad) continue;
+      const na = g.angle + Math.sign(diff || 1) * (g.half + pad);
+      b.x = Math.cos(na) * d;
+      b.z = Math.sin(na) * d;
+    }
+  }
+}
+
+// Build the level's field from its bands (see fieldBands in arenaLevels.ts).
+// Ids from `firstId`. Every bomb gets its clump index and band tag.
+export function generateField(c: ArenaConfig, bands: readonly BandSpec[], rand: RandomFn, firstId: number): SimBomb[] {
+  const placed: SimBomb[][] = []; // one entry per clump
+  const perBand: SimBomb[][] = [];
+  let id = firstId;
+  for (const band of bands) {
+    const bombs = generateBand(c, band, rand, id, placed);
+    id += bombs.length;
+    perBand.push(bombs);
+  }
   const bombs = placed.flat();
-  relaxBombs(bombs, new SpatialGrid(WORLD_HALF_EXTENT, r * 2 * c.connectScale), r, 12, []);
+  const grid = new SpatialGrid(WORLD_HALF_EXTENT, c.bombRadius * 2 * c.connectScale);
+  // Remove any residual overlap from fallback placements (gaps re-cleared after)
+  relaxBombs(bombs, grid, c.bombRadius, 12, []);
+  if (bands.length > 1 || bands.some((b) => b.gaps.length > 0)) {
+    const radial = bands.length > 1;
+    for (let pass = 0; pass < 3; pass++) {
+      bands.forEach((band, i) => clearGaps(perBand[i], band, c.bombRadius, radial));
+      relaxBombs(bombs, grid, c.bombRadius, 6, []);
+    }
+    bands.forEach((band, i) => clearGaps(perBand[i], band, c.bombRadius, radial));
+  }
   return bombs;
 }
