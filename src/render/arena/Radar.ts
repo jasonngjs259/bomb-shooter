@@ -7,7 +7,7 @@
 //     cyan rim, the arena border ring, one faint range ring, the view wedge
 //     (25% cyan, brighter edges) and the 16 danger sectors as red rim arcs;
 //   bombs: round blips in their full bomb colours with a 1 px dark outline,
-//     5 px (desktop) / 4 px (phone), a little bigger when close, pulsing
+//     6+ px (desktop) / 5+ px (phone) incl. outline, bigger when close, pulsing
 //     near the border; bombs beyond range sit on the rim as small dots;
 //   player: a white arrow at the centre with a dark outline.
 // The custom shaders output display (sRGB) colours directly: no lighting,
@@ -54,10 +54,14 @@ void main() {
   col = mix(col, vec3(0.13, 0.95, 1.0), 0.75 * band((length(w) - uArena) * px, 0.75));
   // view wedge: 25% cyan, brighter edges
   float ang = atan(vUv.x, vUv.y); // 0 = up
-  if (r < 0.62 && abs(ang) < uHalf) {
-    col = mix(col, vec3(0.13, 0.95, 1.0), 0.25);
-    float edge = min(abs(abs(ang) - uHalf) * r * px, (0.62 - r) * px);
-    col = mix(col, vec3(0.6, 1.0, 1.0), 0.55 * (1.0 - smoothstep(0.5, 1.5, edge)));
+  // (analytic edges, ~1 px smooth, so the arc and sides never stair-step)
+  float dR = (0.62 - r) * px;                        // px inside the arc
+  float dA = (uHalf - abs(ang)) * r * px;            // px inside the sides
+  float inWedge = clamp(min(dR, dA) + 0.5, 0.0, 1.0);
+  if (inWedge > 0.0) {
+    col = mix(col, vec3(0.13, 0.95, 1.0), 0.25 * inWedge);
+    float edge = min(abs(dR), abs(dA));
+    col = mix(col, vec3(0.6, 1.0, 1.0), 0.55 * inWedge * (1.0 - smoothstep(0.5, 1.5, edge)));
   }
   // danger sectors on the rim (world angle of this screen direction)
   vec2 dirW = uF * vUv.y + R * vUv.x;
@@ -187,7 +191,9 @@ export class Radar {
     this.arrow.scale.setScalar((sizePx < 110 ? 11 : 13) / (0.17 * unitPx));
 
     const phone = sizePx < 110;
-    const base = phone ? 4 : 5;
+    // core size (the outline adds 1 px each side); phone blips stay small so
+    // touching bombs still read as separate dots
+    const base = phone ? 3 : 4.5;
     const cfg = engine.getConfig();
     const pulse = 0.5 + 0.5 * Math.sin(this.t * 9);
     let n = 0;
@@ -198,7 +204,7 @@ export class Radar {
       let x = (-dx * fz + dz * fx) / RANGE;
       let y = (dx * fx + dz * fz) / RANGE;
       const d = Math.hypot(x, y);
-      let px = base * (1.25 - 0.4 * Math.min(1, d)); // closer = bigger
+      let px = base * ((phone ? 1.1 : 1.25) - (phone ? 0.15 : 0.35) * Math.min(1, d)); // closer = bigger
       if (d > 0.95) {
         // beyond range: a small dot on the rim
         x *= 0.95 / d;
@@ -215,7 +221,7 @@ export class Radar {
       this.col[n * 3] = c.r;
       this.col[n * 3 + 1] = c.g;
       this.col[n * 3 + 2] = c.b;
-      this.size[n] = Math.max(phone ? 4 : 5, px) + 2; // + the 1 px outline each side
+      this.size[n] = px + 2; // + the 1 px outline each side (>= 5 px phone, >= 6 desktop)
       n++;
     }
     this.dotsGeo.setDrawRange(0, n);

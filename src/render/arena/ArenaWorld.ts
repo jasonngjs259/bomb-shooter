@@ -37,6 +37,8 @@ export interface Threat { x: number; y: number; rot: number; d: number; angle: n
 export interface RadarRect { x: number; y: number; size: number } // css px, top-left origin
 export interface Box { x: number; y: number; w: number; h: number } // css px
 const BEHIND = (100 * Math.PI) / 180; // threat arrows: behind the player beyond this
+const ARROW_GAP = 56; // px between behind-arrows on the bottom band
+const ROLL_ROOM = 48; // px kept free left of the FIRE cluster (planned ROLL button)
 
 export type CharacterSource = () => Promise<ArrayBuffer>;
 export type AvatarKind = "loading" | "character" | "stickman";
@@ -58,6 +60,7 @@ export class ArenaWorld {
   // touch clusters) so they never cover - or steal taps from - other UI.
   arrowRect: Box | null = null;
   arrowAvoid: Box[] = [];
+  private readonly behindList: Threat[] = [];
   laserWide = 1; // tutorial highlight
   playing = false; // controls + aim guide live (intro done, not paused/ended)
   private readonly fxSpace = new Group();
@@ -325,10 +328,17 @@ export class ArenaWorld {
       const t = this.threats[n++];
       t.x = cx + Math.sin(ang) * Math.max(0, r.w / 2 - 28);
       t.y = cy - Math.cos(ang) * Math.max(0, r.h / 2 - 28);
-      for (const b of this.arrowAvoid) {
-        if (t.x > b.x - 28 && t.x < b.x + b.w + 28 && t.y > b.y - 28 && t.y < b.y + b.h + 28) {
-          // move vertically out of the box towards the rect centre
-          t.y = t.y > cy ? b.y - 30 : b.y + b.h + 30;
+      if (behind) {
+        // behind: on the bottom band (slid sideways out of the controls below)
+        t.y = r.y + r.h - 28;
+      } else {
+        // sides: never up in the horizon band among the bombs; out of a
+        // control box sideways, never upwards
+        t.y = Math.max(t.y, cy);
+        for (const b of this.arrowAvoid) {
+          if (t.x > b.x - 28 && t.x < b.x + b.w + 28 && t.y > b.y - 28 && t.y < b.y + b.h + 28) {
+            t.x = b.x + b.w / 2 > cx ? b.x - 30 : b.x + b.w + 30;
+          }
         }
       }
       // point outward: from the arrow towards the threat's screen position
@@ -339,6 +349,32 @@ export class ArenaWorld {
       t.angle = Math.atan2(pz - s.z, px - s.x);
     }
     this.threatCount = n;
+    this.spreadBehind(r, cx);
+  }
+
+  // Behind-arrows share the bottom band: keep them in the free gap between
+  // the control clusters (and the room left for a ROLL button) and at least
+  // ARROW_GAP apart, in their left-to-right order.
+  private spreadBehind(r: Box, cx: number) {
+    const band = r.y + r.h - 28;
+    let lo = r.x + 28;
+    let hi = r.x + r.w - 28;
+    for (const b of this.arrowAvoid) {
+      if (band < b.y - 28 || band > b.y + b.h + 28) continue;
+      if (b.x + b.w / 2 < cx) lo = Math.max(lo, b.x + b.w + 30);
+      else hi = Math.min(hi, b.x - 30 - ROLL_ROOM);
+    }
+    const list = this.behindList;
+    list.length = 0;
+    for (let i = 0; i < this.threatCount; i++) if (this.threats[i].behind) list.push(this.threats[i]);
+    if (list.length === 0) return;
+    list.sort((a, b) => a.x - b.x);
+    const gap = Math.min(ARROW_GAP, list.length > 1 ? Math.max(0, hi - lo) / (list.length - 1) : ARROW_GAP);
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      t.x = Math.min(Math.max(t.x, lo + i * gap), hi - (list.length - 1 - i) * gap);
+      if (i > 0) t.x = Math.max(t.x, list[i - 1].x + gap);
+    }
   }
 
   dispose() {

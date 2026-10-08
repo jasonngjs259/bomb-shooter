@@ -179,9 +179,13 @@ export class ChaseCamera {
       const dz = this.focus.z - this.player.z;
       const len = Math.hypot(dx, dz) || 1;
       const ux = dx / len, uz = dz / len;
-      this.crn.set(this.player.x - ux * 5.5 - uz * 1.2, 3.6, this.player.z - uz * 5.5 + ux * 1.2);
+      // short phone screens: further back + higher so the body falling
+      // towards the camera stays in frame
+      const short = aspect >= 1.9;
+      const back = short ? 7 : 5.5;
+      this.crn.set(this.player.x - ux * back - uz * 1.2, short ? 4.2 : 3.6, this.player.z - uz * back + ux * 1.2);
       want.lerp(this.crn, k);
-      const lf = aspect >= 1.9 ? 0.15 : 0.35; // short phone screens: favour the fall
+      const lf = short ? 0.1 : 0.35; // short phone screens: favour the fall
       const fx = this.player.x + dx * lf, fz = this.player.z + dz * lf;
       lookX += (fx - lookX) * k;
       lookY += (0.6 - lookY) * k;
