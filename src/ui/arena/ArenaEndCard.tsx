@@ -6,6 +6,8 @@
 // time), BEST COMBO, and a NEW UNLOCK row (1.2 s shine, EQUIP in place).
 // Buttons (and Space/Enter, handled by the screen) arm 1.5 s after the card
 // appears so a held fire key or a stray tap can't skip it.
+// Bests are labelled by scope: NEW tags on SCORE / BEST COMBO / TIME and the
+// LEVEL BEST row are this level's records; ALL-TIME BEST is the Arena best.
 
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -28,7 +30,8 @@ export interface EndStars {
   time: number;
   par: number;
   bestCombo: number;
-  newBest: { score: boolean; combo: boolean; time: boolean };
+  newBest: { score: boolean; combo: boolean; time: boolean }; // vs. this LEVEL's records
+  levelBest: number; // this level's best score (after this run)
 }
 
 interface Props {
@@ -147,8 +150,9 @@ export function ArenaEndCard({
               <Star index={2} on={stars.flawless} label="FLAWLESS" reason={stars.flawless ? "" : "NO HITS · NO RED"} still={still} />
             </View>
           )}
-          {row("SCORE", formatScore(score), !!nb?.score || (!stars && isNewBest))}
-          {row("BEST", formatScore(Math.max(best, score)), false, true)}
+          {row("SCORE", formatScore(score), !!nb?.score)}
+          {won && stars && row("LEVEL BEST", formatScore(Math.max(stars.levelBest, score)))}
+          {row("ALL-TIME BEST", formatScore(Math.max(best, score)), isNewBest, true)}
           {row("BEST COMBO", `x${Math.max(1, stars?.bestCombo ?? combo)}`, !!nb?.combo)}
           {row("TIME", fmtClock(time), !!nb?.time && won)}
           {!won && row("LEVEL", String(level))}

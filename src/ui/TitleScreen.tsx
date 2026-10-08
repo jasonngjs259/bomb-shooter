@@ -107,7 +107,7 @@ export function TitleScreen({
         style={[
           styles.playWrap,
           {
-            top: tl.playY - (tl.desktop ? 66 : 68),
+            top: tl.playTop,
             opacity: Animated.multiply(play, fadeOut),
             transform: [{ scale: still ? 1 : play }],
             pointerEvents: detonating ? "none" : "box-none",
@@ -115,7 +115,7 @@ export function TitleScreen({
         ]}
       >
         <ModeButtons
-          desktop={tl.desktop} selected={selected} arenaNew={arenaNew} bestArena={bestArena} bestClassic={best} still={still}
+          desktop={tl.desktop} compact={tl.compact} selected={selected} arenaNew={arenaNew} bestArena={bestArena} bestClassic={best} still={still}
           onPlay={onPlay} onSelect={onSelect} onHangar={onHangar} stars={stars}
         />
       </Animated.View>

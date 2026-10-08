@@ -13,6 +13,8 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { keyLegend } from "../../arena/keyMap";
+import { isPlayClockPaused, playTime } from "../../arena/playClock";
+import { DESKTOP_CARD_W, DESKTOP_FEVER_W, FEVER_LABEL_W, MOUSE_CHIP_W, PHONE_FEVER_W } from "./arenaHudMetrics";
 import type { ArenaEngine, PowerKind } from "../../game/arena";
 import { romanMk } from "../../game/arena/skins";
 import { IconButton } from "../Button";
@@ -39,11 +41,13 @@ export interface HudState {
 
 const ROLL_SEGMENTS = 24;
 
+
 export function readHud(engine: ArenaEngine, total: number): HudState {
   const def = engine.getLevelDef();
   const fever = engine.getFever();
   const roll = engine.getRoll();
   const sp = engine.getStarProgress();
+  const t = playTime(engine, sp.time); // real play only (playClock.ts)
   const boss = engine.getBoss();
   const cd = engine.getFunConfig().roll.cooldown;
   const rollFill = roll.state === "locked" ? 0 : roll.state === "ready" ? 1 : Math.round((1 - Math.min(1, roll.cooldown / cd)) * ROLL_SEGMENTS) / ROLL_SEGMENTS;
@@ -57,7 +61,7 @@ export function readHud(engine: ArenaEngine, total: number): HudState {
     power: engine.getPowerSlot(),
     freeze: Math.ceil(engine.getFreeze() * 10) / 10,
     rollOn: def.roll, rollFill, rolling: roll.state === "rolling",
-    par: sp.par, parLeft: Math.max(0, Math.ceil(sp.par - sp.time)), fastLost: sp.time > sp.par, flawless: sp.flawless,
+    par: sp.par, parLeft: Math.max(0, Math.ceil(sp.par - t)), fastLost: !isPlayClockPaused(engine) && t > sp.par, flawless: sp.flawless,
     bossMk: boss?.mk ?? 0, bossHp: boss?.hp ?? 0, bossMaxHp: boss?.maxHp ?? 0, bossPhase: boss?.phase ?? 0,
     bossWeak: boss?.weakColor ?? 0, bossNext: boss?.nextWeakColor ?? 0, bossFlicker: flicker,
     bossShield: boss ? boss.shield.length : 0, bossShieldMax: def.boss?.shield ?? 0, bossInvuln: boss?.invulnerable ?? false,
@@ -139,7 +143,7 @@ export const FeverBar = memo(function FeverBar({ value, active, width }: { value
           <View style={[styles.feverFillB, { width: width * k * 0.5 }]} />
         </View>
       </View>
-      {active && <Text style={styles.feverLabel}>FEVER!</Text>}
+      {active && <Text style={styles.feverLabel} numberOfLines={1}>FEVER!</Text>}
     </View>
   );
 });
@@ -225,15 +229,18 @@ interface Props {
   screenW: number;
   insetTop: number;
   insetBottom: number;
+  mouse?: boolean; // short desktop window (mouse, phone-style HUD): compact NEXT / ROLL / keys chip
   onPause: () => void;
 }
+
+
 
 // Where the boss row sits (ArenaScreen keeps threat arrows / tips clear of it).
 export const bossRowTop = (desktop: boolean, insetTop: number) => (desktop ? 16 : insetTop + 12 + 52 + 4);
 export const BOSS_ROW_H = 34;
 
 export const ArenaHud = memo(function ArenaHud({
-  hud, best, desktop, radarSize, left, top, width, screenW, insetTop, insetBottom, onPause,
+  hud, best, desktop, radarSize, left, top, width, screenW, insetTop, insetBottom, mouse = false, onPause,
 }: Props) {
   const settings = useSettings();
   // "x3" repeats next to the score for 900 ms after a combo
@@ -284,7 +291,7 @@ export const ArenaHud = memo(function ArenaHud({
               </View>
             </IconButton>
           </View>
-          {hud.feverOn && <FeverBar value={hud.fever} active={hud.feverActive} width={150} />}
+          {hud.feverOn && <FeverBar value={hud.fever} active={hud.feverActive} width={DESKTOP_FEVER_W} />}
           <PowerTile power={hud.power} />
           {hud.freeze > 0 && (
             <View style={styles.rowBetween}>
@@ -313,7 +320,7 @@ export const ArenaHud = memo(function ArenaHud({
       </>
     );
   }
-  const feverW = 220;
+  const feverW = PHONE_FEVER_W;
   return (
     <>
       <View style={[styles.bar, { left, top, width }]}>
@@ -349,6 +356,27 @@ export const ArenaHud = memo(function ArenaHud({
           {hud.feverOn && <FeverBar value={hud.fever} active={hud.feverActive} width={feverW} />}
         </View>
       )}
+      {mouse && (
+        <View style={[styles.chip, styles.mouseChip, { right: 12, bottom: insetBottom + 12, width: MOUSE_CHIP_W }]}>
+          <View style={styles.rowBetween}>
+            <Text style={styles.label}>NEXT</Text>
+            <View style={styles.row}>
+              {hud.power && (
+                <View style={styles.powerMini} accessibilityLabel={`Power ${POWER_LABEL[hud.power]}`}>
+                  <PowerIcon kind={hud.power} size={18} />
+                </View>
+              )}
+              <View style={[styles.nextDotSmall, { backgroundColor: BOMB_HEX[hud.next]?.base ?? palette.textMuted }]}>
+                {hud.power && <LockGlyph size={12} color={palette.ink} />}
+              </View>
+            </View>
+          </View>
+          {hud.rollOn && legend.roll && <RollChip fill={hud.rollFill} rolling={hud.rolling} keyLabel={legend.roll} />}
+          <Text style={styles.legendMini}>
+            {legend.fire} FIRE{legend.roll ? ` · ${legend.roll} ROLL` : ""}{"\n"}{legend.swap} SWAP · R THREAT{"\n"}WASD MOVE · ESC PAUSE
+          </Text>
+        </View>
+      )}
     </>
   );
 });
@@ -381,7 +409,7 @@ const styles = StyleSheet.create({
   ringFill: { width: 8, height: 8, borderRadius: 4, backgroundColor: palette.gold },
   corner: {
     position: "absolute",
-    width: 236,
+    width: DESKTOP_CARD_W,
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 16,
@@ -413,6 +441,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(11, 4, 32, 0.6)",
     pointerEvents: "none",
   },
+  mouseChip: { paddingVertical: 8, gap: 2 },
+  powerMini: { width: 26, height: 26, marginRight: 6, alignItems: "center", justifyContent: "center" },
+  legendMini: { fontFamily: fonts.label, fontSize: 11, lineHeight: 14, letterSpacing: 0.8, color: palette.textSecondary, marginTop: 6 },
   legendText: { fontFamily: fonts.label, fontSize: 12, letterSpacing: 1.2, color: palette.textSecondary },
   pauseGlyph: { flexDirection: "row", gap: 5 },
   pauseBar: { width: 4, height: 14, borderRadius: 1, backgroundColor: palette.textPrimary },
@@ -423,7 +454,7 @@ const styles = StyleSheet.create({
   feverHot: { borderColor: palette.gold },
   feverFillA: { height: "100%", backgroundColor: "#FF3DCB", alignItems: "flex-end" },
   feverFillB: { height: "100%", backgroundColor: "#FFD23F", opacity: 0.85 },
-  feverLabel: { fontFamily: fonts.display, fontSize: 12, letterSpacing: 1, color: palette.gold, marginLeft: 6 },
+  feverLabel: { fontFamily: fonts.display, fontSize: 11, letterSpacing: 0.5, color: palette.gold, marginLeft: 6, maxWidth: FEVER_LABEL_W },
   freezePill: {
     flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, height: 24, borderRadius: 12,
     backgroundColor: "rgba(11, 4, 32, 0.78)", borderWidth: 1, borderColor: FREEZE_COLOR,

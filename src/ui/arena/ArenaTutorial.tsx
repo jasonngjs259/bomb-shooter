@@ -3,7 +3,8 @@
 // 2 AIM (turn 90 deg total), 3 FIRE (first pop or 3 shots). Each step ticks
 // a check, then the next starts after 300 ms. SKIP ends it. Right after a
 // tutorial run (first-run only), on the 2nd shot, a one-off 3 s swap hint;
-// never during the end / win sequences (swapHintEnabled goes false).
+// never during the end / win sequences (swapHintEnabled goes false) and
+// never while NEXT is locked by a loaded POWER (it waits for a later shot).
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
@@ -25,12 +26,13 @@ interface Props {
   desktop: boolean;
   active: boolean; // tutorial stage running
   swapHintEnabled: boolean; // tutorial ran this session and play is live
+  swapLocked: boolean; // a POWER is loaded: swapping is locked
   bottom: number;
   onDone: () => void;
   onLaserWide: (wide: number) => void;
 }
 
-export function ArenaTutorial({ engine, controls, desktop, active, swapHintEnabled, bottom, onDone, onLaserWide }: Props) {
+export function ArenaTutorial({ engine, controls, desktop, active, swapHintEnabled, swapLocked, bottom, onDone, onLaserWide }: Props) {
   const [step, setStep] = useState(0);
   const [ticked, setTicked] = useState(false);
   const [swapHint, setSwapHint] = useState(false);
@@ -91,7 +93,7 @@ export function ArenaTutorial({ engine, controls, desktop, active, swapHintEnabl
     let timer: ReturnType<typeof setTimeout> | null = null;
     const off = engine.on("shoot", () => {
       shots++;
-      if (shots === 2 && !swapHintShown.current) {
+      if (shots >= 2 && !swapHintShown.current && !engine.getPowerSlot()) {
         swapHintShown.current = true;
         setSwapHint(true);
         timer = setTimeout(() => setSwapHint(false), 3000);
@@ -110,7 +112,7 @@ export function ArenaTutorial({ engine, controls, desktop, active, swapHintEnabl
   }
 
   if (!active) {
-    if (!swapHint || !swapHintEnabled) return null;
+    if (!swapHint || !swapHintEnabled || swapLocked) return null;
     return (
       <View style={[styles.wrap, styles.none, { bottom }]}>
         <View style={styles.pill}>

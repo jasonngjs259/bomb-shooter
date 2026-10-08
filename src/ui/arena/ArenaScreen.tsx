@@ -23,6 +23,7 @@ import { ARENA_CONFIG, ArenaEngine } from "../../game/arena";
 import { SkinColors, skinColors } from "../../game/arena/skins";
 import { equip, isOwned, levelBest, markIntroSeen } from "../../storage/arenaProgress";
 import { getProgress, updateProgress, useProgress } from "../../storage/progressStore";
+import { resetPlayClock, setPlayClockPaused } from "../../arena/playClock";
 import { getSimClock } from "../../game/clock";
 import { getFxBus } from "../../fx/bus";
 import { ArenaCanvas } from "../../render/arena/ArenaCanvas";
@@ -38,6 +39,7 @@ import { reduceMotion, useSettings } from "../settings";
 import { palette } from "../theme";
 import { ArenaEndCard } from "./ArenaEndCard";
 import { ArenaHud, BOSS_ROW_H, bossRowTop, useArenaHud } from "./ArenaHud";
+import { MOUSE_CHIP_W } from "./arenaHudMetrics";
 import { FeatureTips } from "./FeatureTips";
 import { RollTutorial, wantsRollTutorial } from "./RollTutorial";
 import { Banner, ClickToPlay, LostCard, RotateToast, ThreatArrows } from "./ArenaOverlays";
@@ -94,7 +96,10 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
   const [rollTut, setRollTut] = useState(false);
   const [rollNew, setRollNew] = useState(false);
   const newGameAt = useCallback(
-    (level: number, keepScore: boolean) => engine.newGame({ level, keepScore, best: levelBest(getProgress(), level) }),
+    (level: number, keepScore: boolean) => {
+      engine.newGame({ level, keepScore, best: levelBest(getProgress(), level) });
+      resetPlayClock(engine, true); // released by the clock effect once real play starts
+    },
     [engine]
   );
   // Dev-only (web): expose the engine + world for QA scripts (window.__arena).
@@ -142,10 +147,7 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, world, bus, clock]);
 
-  // creep only runs in "play" (and not during the L5 roll lesson); GO! banner when play starts
-  useEffect(() => {
-    engine.setCreepPaused(stage !== "play" || rollTut);
-  }, [stage, rollTut, engine]);
+  // GO! banner when play starts (creep + play clock: see below the controls)
   useEffect(() => {
     if (stage === "play") bus.emit("banner", { text: "GO!", color: palette.gold, duration: 900 });
   }, [stage, bus]);
@@ -224,7 +226,10 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
   const arrowAvoid: Box[] = desktopHud
     ? [{ x: 16, y: 16, w: 236, h: 330 }, { x: radar.x, y: 16, w: 140, h: 140 + 8 + 130 }, { x: 16, y: H - 44, w: 640, h: 32 }]
     : desktopInput
-      ? [{ x: W / 2 - 220, y: H - insets.bottom - 44, w: 440, h: 36 }]
+      ? [
+          { x: W / 2 - 220, y: H - insets.bottom - 44, w: 440, h: 36 },
+          { x: W - 12 - MOUSE_CHIP_W, y: H - insets.bottom - 12 - 170, w: MOUSE_CHIP_W, h: 170 },
+        ]
       : [
           { x: W - insets.right - 230, y: H - insets.bottom - 220, w: 230, h: 220 },
           { x: insets.left + 20, y: H - insets.bottom - 16 - 150, w: 160, h: 150 },
@@ -235,11 +240,23 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
   const radarBox: Box = { x: radar.x, y: radar.y, w: radar.size, h: radar.size };
   const { lock, requestLock, releaseLock } = useArenaDesktopControls({
     enabled: desktopInput, engine, controls, world, active: live, onPause: togglePause, onIdleKey, rootRef,
-    uiBoxes: desktopHud ? arrowAvoid : [radarBox],
+    uiBoxes: desktopHud ? arrowAvoid : desktopInput ? [radarBox, ...arrowAvoid] : [radarBox],
   });
   useEffect(() => {
     if (paused || stage === "end" || glDown) releaseLock();
   }, [paused, stage, glDown, releaseLock]);
+  // Real play only: the creep runs in "play" (not during the L5 roll lesson
+  // or the CLICK TO PLAY gate); the par / star clock is also held while
+  // paused, during the intro, the L1 tutorial and the end sequence.
+  const gateUp = desktopInput && live && lock === "none";
+  const creepHeld = stage !== "play" || rollTut || gateUp;
+  const clockHeld = creepHeld || paused || glDown;
+  useEffect(() => {
+    engine.setCreepPaused(creepHeld);
+  }, [creepHeld, engine]);
+  useEffect(() => {
+    setPlayClockPaused(engine, clockHeld);
+  }, [clockHeld, engine]);
   useEffect(() => {
     world.radarRect = stage === "intro" ? null : radar;
     world.arrowRect = arrowRect;
@@ -273,19 +290,20 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
         <ArenaHud
           hud={hud} best={session.best} desktop={desktopHud} radarSize={radar.size} left={hudLeft}
           top={insets.top + 12} width={desktopHud ? W : W - hudLeft - insets.right - 12}
-          screenW={W} insetTop={insets.top} insetBottom={insets.bottom} onPause={togglePause}
+          screenW={W} insetTop={insets.top} insetBottom={insets.bottom} mouse={desktopInput && !desktopHud} onPause={togglePause}
         />
       )}
-      <FeatureTips engine={engine} allowed={live && stage === "play" && !rollTut} top={tipTop} />
+      <FeatureTips engine={engine} allowed={live && stage === "play" && !rollTut && !gateUp} top={tipTop} />
       <RollTutorial
-        engine={engine} desktop={desktopInput} active={rollTut && live && stage === "play"} bottom={insets.bottom + (desktopInput ? 48 : 200)}
+        engine={engine} desktop={desktopInput} active={rollTut && live && stage === "play"} bottom={insets.bottom + (desktopHud ? 48 : desktopInput ? 170 : 200)}
         onDone={() => setRollTut(false)}
       />
       {live && <ThreatArrows world={world} engine={engine} controls={controls} />}
       <ArenaTutorial
         engine={engine} controls={controls} desktop={desktopInput} active={stage === "tutorial" && !paused}
         swapHintEnabled={tutorialRan && stage === "play" && !paused}
-        bottom={insets.bottom + (desktopInput ? 32 : 200)} onDone={() => setStage("play")} onLaserWide={setLaserWide}
+        swapLocked={hud.power !== null}
+        bottom={insets.bottom + (desktopHud ? 32 : desktopInput ? 170 : 200)} onDone={() => setStage("play")} onLaserWide={setLaserWide}
       />
       <Banner owner={engine} />
       <ScreenFlash engine={engine} />

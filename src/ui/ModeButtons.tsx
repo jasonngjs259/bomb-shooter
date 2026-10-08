@@ -18,6 +18,7 @@ const native = Platform.OS !== "web";
 
 interface Props {
   desktop: boolean;
+  compact?: boolean; // short landscape: ARENA | CLASSIC in a row (56pt), HANGAR under them
   selected: GameMode;
   arenaNew: boolean;
   bestArena: number;
@@ -80,7 +81,7 @@ function NewBadge({ still }: { still: boolean }) {
   );
 }
 
-export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassic, still, onPlay, onSelect, onHangar, stars }: Props) {
+export function ModeButtons({ desktop, compact = false, selected, arenaNew, bestArena, bestClassic, still, onPlay, onSelect, onHangar, stars }: Props) {
   const item = (mode: GameMode) => {
     const arena = mode === "arena";
     const focus = selected === mode;
@@ -99,18 +100,18 @@ export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassi
           onSelect(mode);
         }}
         style={({ pressed }) => [
-          desktop ? styles.card : arena ? styles.primary : styles.secondary,
+          desktop ? styles.card : compact ? styles.compactBtn : arena ? styles.primary : styles.secondary,
           !arena && styles.secondaryFill,
           focus && styles.focus,
           pressed && styles.pressed,
         ]}
       >
         {arena && (
-          <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: desktop ? 22 : 32 }]} />
+          <LinearGradient colors={gradients.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: desktop ? 22 : compact ? 28 : 32 }]} />
         )}
         <View style={styles.titleRow}>
           {arena ? <OrbitIcon color={ink} /> : <HexIcon color={palette.cyan} />}
-          <Text style={[styles.label, { color: ink, fontSize: desktop ? 26 : arena ? 24 : 21 }]}>{arena ? "ARENA 360" : "CLASSIC"}</Text>
+          <Text style={[styles.label, { color: ink, fontSize: desktop ? 26 : compact ? 21 : arena ? 24 : 21 }]}>{arena ? "ARENA 360" : "CLASSIC"}</Text>
         </View>
         {desktop && <Text style={[styles.sub, { color: arena ? palette.ink : palette.textSecondary }]}>{arena ? "MOVE · AIM · 360" : "AIM · MATCH 3"}</Text>}
         {desktop && (
@@ -123,8 +124,16 @@ export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassi
     );
   };
   return (
-    <View style={styles.wrap}>
-      {desktop ? (
+    <View style={[styles.wrap, compact && styles.wrapCompact]}>
+      {compact ? (
+        <>
+          <View style={styles.rowCompact}>
+            {item("arena")}
+            {item("classic")}
+          </View>
+          <HangarButton onPress={onHangar} stars={stars} />
+        </>
+      ) : desktop ? (
         <View style={styles.rowDesktop}>
           <View style={styles.colArena}>
             {item("arena")}
@@ -155,6 +164,9 @@ export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassi
 const styles = StyleSheet.create({
   wrap: { alignItems: "center", gap: 12 },
   colPhone: { alignItems: "center", gap: 12 },
+  wrapCompact: { gap: 10 },
+  rowCompact: { flexDirection: "row", gap: 16 },
+  compactBtn: { width: 250, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", cursor: "pointer" },
   rowDesktop: { flexDirection: "row", gap: 24, alignItems: "flex-start" },
   colArena: { alignItems: "center", gap: 12 },
   hangar: {
@@ -182,6 +194,6 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontFamily: fonts.button, fontSize: 12, letterSpacing: 1, color: palette.ink },
   hint: { fontFamily: fonts.label, fontSize: 13, letterSpacing: 1.6, color: palette.textMuted },
-  best: { fontFamily: fonts.label, fontSize: 14, letterSpacing: 1.5, color: palette.textSecondary },
+  best: { fontFamily: fonts.label, fontSize: 14, lineHeight: 20, letterSpacing: 1.5, color: palette.textSecondary },
   bestValue: { fontFamily: fonts.score, fontSize: 15, color: palette.gold },
 });

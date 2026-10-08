@@ -27,3 +27,23 @@ export const boxGlow = (color: string, radius: number, opacity: number, elevatio
 // Prepend to the transform of a view animated every frame from JS: a 3D
 // transform promotes it to its own compositor layer on web. No-op on native.
 export const ownLayer: { perspective: number }[] = IS_WEB ? [{ perspective: 1000 }] : [];
+
+// Web: thin, dark scrollbars for the scrolling cards (Pause / Settings,
+// HANGAR) instead of the browser's white default. Installed once at app
+// start; a no-op on native and without a DOM.
+export const SCROLLBAR_CSS = [
+  "* { scrollbar-width: thin; scrollbar-color: rgba(124, 92, 255, 0.55) transparent; }",
+  "::-webkit-scrollbar { width: 6px; height: 6px; background: transparent; }",
+  "::-webkit-scrollbar-track { background: transparent; }",
+  "::-webkit-scrollbar-thumb { background: rgba(124, 92, 255, 0.55); border-radius: 3px; }",
+  "::-webkit-scrollbar-thumb:hover { background: rgba(34, 242, 255, 0.7); }",
+  "::-webkit-scrollbar-corner { background: transparent; }",
+].join("\n");
+
+export function installWebScrollbarStyle() {
+  if (!IS_WEB || typeof document === "undefined" || document.getElementById("bs-scrollbars")) return;
+  const el = document.createElement("style");
+  el.id = "bs-scrollbars";
+  el.textContent = SCROLLBAR_CSS;
+  document.head.appendChild(el);
+}

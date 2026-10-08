@@ -17,8 +17,10 @@ import { GameScreen } from "./src/ui/GameScreen";
 import { initProgress } from "./src/storage/progressStore";
 import { initSettings } from "./src/ui/settings";
 import { palette } from "./src/ui/theme";
+import { installWebScrollbarStyle } from "./src/ui/webSafe";
 
 initSettings();
+installWebScrollbarStyle();
 // Arena progress (stars, unlocks, equipped skin, seen tips) loads in the background.
 void initProgress();
 // Audio players are created once here (web: silent until the first tap / key).
