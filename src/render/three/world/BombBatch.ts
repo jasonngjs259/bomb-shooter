@@ -38,33 +38,36 @@ export const newDraw = (): BombDraw => ({
   colorIndex: 0, glow: 0.35, tint: 0, halo: 1, spark: 1, shadow: true,
 });
 
-const patchBombMaterial = (m: Material) => {
+// uIce (0..1): the Arena Freeze look, emissive -> #CFF4FF x0.5 (fun spec 2.1)
+const patchBombMaterial = (m: Material, ice: { value: number }) => {
   m.onBeforeCompile = (shader) => {
+    shader.uniforms.uIce = ice;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nattribute vec2 aFx;\nvarying vec2 vFx;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFx = aFx;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying vec2 vFx;")
+      .replace("#include <common>", "#include <common>\nvarying vec2 vFx;\nuniform float uIce;")
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), vFx.y);"
+        "#include <color_fragment>\ndiffuseColor.rgb = mix(mix(diffuseColor.rgb, vec3(0.72, 0.9, 1.0), uIce * 0.12), vec3(1.0), vFx.y);"
       )
       .replace(
         "#include <emissivemap_fragment>",
-        "#include <emissivemap_fragment>\ntotalEmissiveRadiance = vColor.rgb * vFx.x + vec3(vFx.y * 1.6);"
+        "#include <emissivemap_fragment>\ntotalEmissiveRadiance = mix(vColor.rgb * vFx.x, vec3(0.81, 0.96, 1.0) * 0.4, uIce * 0.65) + vec3(vFx.y * 1.6);"
       );
   };
   m.customProgramCacheKey = () => "bomb-fx";
   return m;
 };
 
-const makeBombMaterial = (high: boolean) =>
+const makeBombMaterial = (high: boolean, ice: { value: number }) =>
   patchBombMaterial(
     high
       ? new MeshPhysicalMaterial({
           color: "#ffffff", roughness: 0.22, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.08, fog: false,
         })
-      : new MeshStandardMaterial({ color: "#ffffff", roughness: 0.3, metalness: 0.1, fog: false })
+      : new MeshStandardMaterial({ color: "#ffffff", roughness: 0.3, metalness: 0.1, fog: false }),
+    ice
   );
 
 const paint = (g: BufferGeometry, hex: string) => {
@@ -113,6 +116,7 @@ export class BombBatch {
   readonly hardware: InstancedMesh;
   readonly glyphs: InstancedMesh;
   readonly draw = newDraw();
+  readonly ice = { value: 0 }; // 0..1 Freeze tint (Arena)
   glyphAlpha = 0.28;
   haloAlpha = 0.9; // texture tail is ~0.12 at the sphere edge
   haloBack = 18; // halo pushed this far along -z (behind the bomb in Classic)
@@ -136,7 +140,7 @@ export class BombBatch {
     const sphere = new SphereGeometry(BOMB_RADIUS, 32, 24);
     this.fx = new Float32Array(capacity * 2);
     sphere.setAttribute("aFx", new InstancedBufferAttribute(this.fx, 2).setUsage(DynamicDrawUsage));
-    this.bombs = new InstancedMesh(sphere, makeBombMaterial(true), capacity);
+    this.bombs = new InstancedMesh(sphere, makeBombMaterial(true, this.ice), capacity);
     this.bombs.instanceMatrix.setUsage(DynamicDrawUsage);
     this.col = new Float32Array(capacity * 3);
     this.bombs.instanceColor = new InstancedBufferAttribute(this.col, 3).setUsage(DynamicDrawUsage);
@@ -174,7 +178,7 @@ export class BombBatch {
   // Swap the sphere material for the cheaper one on the low quality tier.
   setQuality(high: boolean) {
     const old = this.bombs.material as Material;
-    this.bombs.material = makeBombMaterial(high);
+    this.bombs.material = makeBombMaterial(high, this.ice);
     old.dispose();
   }
 
