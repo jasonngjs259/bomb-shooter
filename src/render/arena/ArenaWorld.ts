@@ -29,6 +29,7 @@ import { Stickman } from "./Stickman";
 
 export interface Threat { x: number; y: number; rot: number; d: number; angle: number }
 export interface RadarRect { x: number; y: number; size: number } // css px, top-left origin
+export interface Box { x: number; y: number; w: number; h: number } // css px
 
 export class ArenaWorld {
   readonly root = new Group();
@@ -39,6 +40,11 @@ export class ArenaWorld {
   readonly threats: Threat[] = [0, 1, 2, 3].map(() => ({ x: 0, y: 0, rot: 0, d: 0, angle: 0 }));
   threatCount = 0;
   radarRect: RadarRect | null = null;
+  // Threat arrows sit on the ellipse inscribed in arrowRect (the playfield
+  // minus HUD bands) and are pushed out of `arrowAvoid` boxes (HUD cards,
+  // touch clusters) so they never cover - or steal taps from - other UI.
+  arrowRect: Box | null = null;
+  arrowAvoid: Box[] = [];
   laserWide = 1; // tutorial highlight
   playing = false; // controls + aim guide live (intro done, not paused/ended)
   private readonly fxSpace = new Group();
@@ -204,8 +210,9 @@ export class ArenaWorld {
     for (const c of clusters) c.a = sectorCentre(c.first) + ((c.n - 1) / 2) * ((Math.PI * 2) / 16);
     clusters.sort((p, q) => q.d - p.d);
     let n = 0;
-    const cx = this.W / 2;
-    const cy = this.H / 2;
+    const r = this.arrowRect ?? { x: 0, y: 0, w: this.W, h: this.H };
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
     for (const c of clusters) {
       if (n >= 4) break;
       const px = Math.cos(c.a) * 6.5;
@@ -215,8 +222,14 @@ export class ArenaWorld {
       if (!behind && Math.abs(this.pv.x) < 0.95 && Math.abs(this.pv.y) < 0.95) continue;
       const rel = angleDiff(this.chase.yaw, Math.atan2(pz - s.z, px - s.x)); // 0 = ahead, + = right
       const t = this.threats[n++];
-      t.x = cx + Math.sin(rel) * (cx - 28);
-      t.y = cy - Math.cos(rel) * (cy - 28);
+      t.x = cx + Math.sin(rel) * Math.max(0, r.w / 2 - 28);
+      t.y = cy - Math.cos(rel) * Math.max(0, r.h / 2 - 28);
+      for (const b of this.arrowAvoid) {
+        if (t.x > b.x - 28 && t.x < b.x + b.w + 28 && t.y > b.y - 28 && t.y < b.y + b.h + 28) {
+          // move vertically out of the box towards the rect centre
+          t.y = t.y > cy ? b.y - 30 : b.y + b.h + 30;
+        }
+      }
       t.rot = (rel * 180) / Math.PI;
       t.d = c.d;
       t.angle = Math.atan2(pz - s.z, px - s.x);

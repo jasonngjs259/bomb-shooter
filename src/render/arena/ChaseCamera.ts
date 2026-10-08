@@ -69,7 +69,7 @@ export class ChaseCamera {
     this.pull = clamp01(this.pull + (hot || this.pullHold > 0 ? dt : -dt) / 0.6);
     const pk = easeInOutCubic(this.pull);
     const fov = vFovFor(aspect) + RIG_DANGER.fov * pk;
-    const live = { dist: rig.dist + RIG_DANGER.dist * pk, height: rig.height + RIG_DANGER.height * pk, lookAhead: rig.lookAhead };
+    const live = { ...rig, dist: rig.dist + RIG_DANGER.dist * pk, height: rig.height + RIG_DANGER.height * pk };
 
     // camera yaw follows facing
     const rate = Math.abs(angleDiff(this.lastYaw, yaw)) / Math.max(dt, 1e-4) > 270 * DEG ? 20 : 12;

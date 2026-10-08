@@ -32,7 +32,7 @@ const ok = (name: string, extra = "") => console.log(`  ok  ${name}${extra ? `  
     assert(e.getPhase() === "playing", "playing after newGame");
     const c = e.getConfig();
     const bombs = idle(e);
-    assert(bombs.length === c.bombCount && e.getRemaining() === bombs.length, "level 1 bomb count");
+    assert(bombs.length === c.firstLevelBombs && e.getRemaining() === bombs.length, "level 1 bomb count (easier first level)");
     const sectors = new Set(bombs.map((b) => Math.floor(((Math.atan2(b.z, b.x) + Math.PI) / (Math.PI * 2)) * 8) % 8));
     assert(sectors.size === 8, `seed ${seed}: field covers all 8 45-deg sectors (got ${sectors.size})`);
     assert(bombs.every((b) => radial(b) - c.bombRadius > c.arenaRadius + 3), "field starts well outside the arena");
@@ -50,7 +50,7 @@ const ok = (name: string, extra = "") => console.log(`  ok  ${name}${extra ? `  
 // ---- 2. Creep, relaxation, determinism, dt clamp, creep pause ---------------
 {
   const e = make(3);
-  e.newGame();
+  e.newGame({ level: 2 }); // tuned creep (level 1 is the easier intro level)
   const before = idle(e).reduce((s, b) => s + radial(b), 0) / e.getRemaining();
   e.update(1000);
   assert(e.getTime() <= 1 / 30 + 1e-9, "dt clamped to 1/30");
@@ -138,7 +138,7 @@ const idleTimes: number[] = [];
 interface BotResult { seed: number; phase: string; time: number; shots: number; pops: number; shattered: number; score: number; maxCombo: number; predictOk: number; predictTotal: number }
 
 // human = turn at most 150 deg/s (via turn()) and decide at most every 1.2 s.
-function aimbot(seed: number, human = false, level = 1): BotResult {
+function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 150): BotResult {
   const e = make(seed);
   const c = e.getConfig();
   const r: BotResult = { seed, phase: "", time: 0, shots: 0, pops: 0, shattered: 0, score: 0, maxCombo: 0, predictOk: 0, predictTotal: 0 };
@@ -179,7 +179,7 @@ function aimbot(seed: number, human = false, level = 1): BotResult {
     frames++;
     const s = e.getShooter();
     assert(radial(s) <= c.arenaRadius - c.shooterRadius + 1e-6, "bot shooter stays inside the arena");
-    const ready = !e.getShot() && s.cooldown === 0 && (!human || e.getTime() - lastShot >= 1.2);
+    const ready = !e.getShot() && s.cooldown === 0 && (!human || e.getTime() - lastShot >= pace);
     if (ready && !plan) {
       const yaw0 = s.yaw;
       let pick = usefulHit(true);
@@ -202,7 +202,7 @@ function aimbot(seed: number, human = false, level = 1): BotResult {
     if (plan) {
       let diff = plan.yaw - e.getShooter().yaw;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-      const maxTurn = human ? (150 * Math.PI / 180) * DT : Math.PI * 2;
+      const maxTurn = human ? (turnDeg * Math.PI / 180) * DT : Math.PI * 2;
       e.turn(Math.max(-maxTurn, Math.min(maxTurn, diff)));
       if (Math.abs(diff) <= maxTurn) {
         predicted = human ? [] : plan.predicted;
@@ -242,19 +242,27 @@ function aimbot(seed: number, human = false, level = 1): BotResult {
 }
 
 {
+  // Human-like bots: turn rate capped, one decision per `pace` seconds.
   const seeds = Array.from({ length: 20 }, (_, i) => i + 1);
-  const results = seeds.map((s) => aimbot(s, true));
-  const wins = results.filter((r) => r.phase === "won");
-  const t = wins.map((w) => w.time).sort((a, b) => a - b);
-  const lost = results.filter((r) => r.phase === "gameOver").map((r) => `${r.seed}@${r.time}s(${r.pops}p)`);
-  console.log(`  human-ish bot (150 deg/s turn, >=1.2 s/shot): ${wins.length}/${results.length} won` +
-    (t.length ? `, clear ${t[0]}..${t[t.length - 1]}s median ${t[Math.floor(t.length / 2)]}s` : "") +
-    (lost.length ? `; lost: ${lost.join(" ")}` : ""));
+  const report = (name: string, level: number, pace: number, turnDeg: number) => {
+    const results = seeds.map((s) => aimbot(s, true, level, pace, turnDeg));
+    const wins = results.filter((r) => r.phase === "won");
+    const t = wins.map((w) => w.time).sort((a, b) => a - b);
+    const lost = results.filter((r) => r.phase === "gameOver").map((r) => `${r.seed}@${r.time}s(${r.pops}p)`);
+    console.log(`  ${name} L${level} (${turnDeg} deg/s turn, >=${pace} s/shot): ${wins.length}/${results.length} won` +
+      (t.length ? `, clear ${t[0]}..${t[t.length - 1]}s median ${t[Math.floor(t.length / 2)]}s` : "") +
+      (lost.length ? `; lost: ${lost.join(" ")}` : ""));
+    return wins.length / results.length;
+  };
+  const l1 = report("human-ish bot", 1, 1.2, 150);
+  const casual = report("casual bot", 1, 2.0, 110);
+  report("human-ish bot", 2, 1.2, 150);
+  assert(l1 >= 0.9 && casual >= 0.6, "level 1 is winnable for first-time players");
 }
 
 // ---- 6. Win state with a one-colour field -----------------------------------
 {
-  const e = make(11, { colorCount: 1, bombCount: 12, ringInner: 7, ringOuter: 8 });
+  const e = make(11, { colorCount: 1, bombCount: 12, firstLevelBombs: 0, ringInner: 7, ringOuter: 8 });
   let won = false;
   e.on("won", () => (won = true));
   e.newGame();
@@ -274,7 +282,7 @@ function aimbot(seed: number, human = false, level = 1): BotResult {
 {
   let checked = 0;
   for (const seed of [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]) {
-    const e = make(seed, { ringInner: 7.1, ringOuter: 8.1, bombCount: 30 });
+    const e = make(seed, { ringInner: 7.1, ringOuter: 8.1, bombCount: 30, firstLevelBombs: 0 });
     e.newGame();
     e.setCreepPaused(true);
     run(e, 0.5); // let the tight test field settle (it can relax over the line)

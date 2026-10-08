@@ -45,7 +45,9 @@ export interface ArenaConfig {
 
   ringInner: number; // level 1 field annulus (bomb centres)
   ringOuter: number;
-  bombCount: number; // level 1 bomb count
+  bombCount: number; // base bomb count (level n = bombCount + (n-1) * bombsPerLevel)
+  firstLevelBombs: number; // easier level 1 bomb count (0 = use bombCount)
+  firstLevelCreepScale: number; // level 1 creep speed multiplier
   bombsPerLevel: number; // extra bombs per level above 1
   maxBombs: number; // hard cap on the generated field size
   clumpMin: number; // layout clumps of same-colour bombs

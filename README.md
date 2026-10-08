@@ -91,7 +91,9 @@ surrounds it on all sides (360°) and slowly creeps inwards.
 - **You lose** when a creeping bomb crosses the arena's border line.
   (A non-matching shot that would stick on/inside the line just deflects.)
 - **You win** when every bomb is cleared; then go on to the next level
-  (more bombs, faster creep; the creep also surges every 20 s).
+  (more bombs, faster creep; the creep also surges every 20 s). Level 1 is
+  a gentler warm-up: 60 bombs and a slower creep.
+- A shot that bounces off at the border line shows **DEFLECT**.
 - Help: the ground danger ring and the radar show where bombs are close,
   red arrows point at off-screen threats, and the aim laser highlights the
   bombs that would pop.
@@ -113,7 +115,11 @@ to rotate. The first game shows a 3-step tutorial (move, turn, fire). Pause
 has Arena settings: mouse speed (desktop) and aim assist (touch). Arena needs
 3D: if WebGL is lost or unavailable the game pauses with **Retry 3D** /
 **Play Classic**. Headless checks: `npx tsx scripts/arena-sanity.ts` (rules)
-and `npx tsx scripts/arena-controls.ts` (controls + camera maths).
+and `npx tsx scripts/arena-controls.ts` (controls + camera maths + render
+passes); `node scripts/check-no-prototype-calls.mjs` guards against calling
+three.js methods through `.prototype`. Dev builds on web accept
+`?arenaBombs=12` to shrink level 1 (to reach the win screen quickly); it is
+ignored in production builds.
 
 ## Project structure
 

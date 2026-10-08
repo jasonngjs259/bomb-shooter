@@ -12,6 +12,7 @@ import { Canvas } from "@react-three/fiber";
 import { ReactNode, useLayoutEffect, useRef } from "react";
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGLRenderer } from "three";
 import { WEBGL_ATTRIBUTES } from "../status/probe";
+import { createGameRenderer } from "./renderer";
 
 export interface GameCanvasProps {
   children: ReactNode;
@@ -25,6 +26,7 @@ export interface GameCanvasProps {
 // dpr capped at 1.5: a full-window 2x canvas with MSAA is ~4x the GPU memory
 // of 1x, which integrated GPUs (shared memory) handle poorly.
 const DPR: [number, number] = [1, 1.5];
+const createRenderer = createGameRenderer(WEBGL_ATTRIBUTES);
 
 export function GameCanvas({ children, onContextLost, onContextRestored, hidden = false }: GameCanvasProps) {
   const handlers = useRef({ onContextLost, onContextRestored });
@@ -62,7 +64,7 @@ export function GameCanvas({ children, onContextLost, onContextRestored, hidden 
     <Canvas
       style={{ position: "absolute", inset: 0, pointerEvents: "none", visibility: hidden ? "hidden" : "visible" }}
       dpr={DPR}
-      gl={WEBGL_ATTRIBUTES}
+      gl={createRenderer}
       camera={{ fov: 30, near: 1, far: 5000, position: [0, 0, 1000] }}
       onCreated={onCreated}
     >

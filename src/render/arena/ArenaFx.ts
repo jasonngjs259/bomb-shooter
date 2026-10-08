@@ -104,8 +104,13 @@ export class ArenaFx {
         const big = bombs.length >= 6 || combo >= 3;
         this.shake(big ? 0.06 : 0.02, big ? 0.22 : 0.12);
         if (combo >= 3 || bombs.length >= 8) this.clock.freeze(60);
-        // knock-back shockwave
-        this.anim(true, centre.x, 0.09, centre.z, 0.26, 0, 2 + bombs.length * 0.45, this.white, 0.7);
+        // knock-back shockwave: a ground ring that grows to exactly the
+        // engine's kick reach (knockbackRadius + n * bombRadius), with a
+        // fainter echo so the pushed zone reads clearly
+        const cfg = this.engine.getConfig();
+        const reach = cfg.knockbackRadius + bombs.length * cfg.bombRadius;
+        this.anim(true, centre.x, 0.09, centre.z, 0.45, 0.2, reach, this.white, 0.95);
+        this.later(0.1, () => this.anim(true, centre.x, 0.085, centre.z, 0.5, 0.2, reach, this.dust, 0.5));
         const s = this.project(centre.x, 1.2, centre.z);
         this.bus.emit("floatText", { x: s.x, y: s.y, text: `+${score}`, kind: "score" });
         if (combo >= 2) this.bus.emit("floatText", { x: s.x, y: s.y - 34, text: `x${combo} COMBO!`, kind: "combo", combo });
@@ -113,8 +118,10 @@ export class ArenaFx {
         else haptics.medium();
       }),
       e.on("shatter", ({ bombs }) => {
-        bombs.slice(0, 5).forEach((b) => {
-          this.anim(false, b.x, 0.45, b.z, 0.06, 0.5, 0.7, this.white, 1);
+        bombs.slice(0, 6).forEach((b) => {
+          // white pre-flash, a glass ring on the ground, shards
+          this.anim(false, b.x, 0.45, b.z, 0.12, 0.5, 1.0, this.white, 1);
+          this.anim(true, b.x, 0.09, b.z, 0.35, 0.3, 1.1, this.white, 0.8);
           if (this.opts.debris) for (let i = 0; i < 6; i++) this.debris.spawn(b.x * U, 0.45 * U, b.z * U, 180, colorAt(bombGlow, b.colorIndex));
           const s = this.project(b.x, 0.9, b.z);
           this.bus.emit("floatText", { x: s.x, y: s.y, text: "+20", kind: "drop" });
@@ -123,7 +130,11 @@ export class ArenaFx {
       }),
       e.on("miss", ({ x, z, deflected }) => {
         if (!deflected) return;
-        this.anim(true, x, 0.1, z, 0.25, 0.2, 1.0, this.white, 0.8);
+        // the shot bounced off at the border line: spark + "DEFLECT"
+        this.anim(true, x, 0.1, z, 0.3, 0.2, 1.1, this.white, 0.9);
+        this.anim(false, x, 0.45, z, 0.12, 0, 0.6, this.white, 1);
+        const sp = this.project(x, 1.0, z);
+        this.bus.emit("floatText", { x: sp.x, y: sp.y, text: "DEFLECT", kind: "drop" });
         for (let i = 0; i < this.n(8); i++) {
           const a = rand(0, Math.PI * 2);
           this.spawn(x, 0.45, z, Math.cos(a) * rand(2, 5), rand(1, 4), Math.sin(a) * rand(2, 5), 0.25, 0.1, this.white, this.dust, -6, 0.92);

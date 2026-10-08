@@ -4,7 +4,8 @@
 // unit = K world units (bomb radius 19u -> 0.45w). Adds what Arena needs:
 // creep wobble, stick squash, pop pre-flash, shatter fade, sparks only on the
 // 12 bombs nearest the border (+ current/next), the current bomb on the
-// launcher, the next over the left shoulder (swap arcs), the in-flight shot,
+// launcher mouth (0.55x), the next beside the left shoulder (0.45x; swap
+// arcs), the in-flight shot,
 // ground blob shadows and the would-pop highlight shells.
 
 import {
@@ -21,6 +22,8 @@ export const K = 0.45 / 19; // world units per Classic unit
 export const U = 1 / K;
 const BOMB_Y = 0.45;
 const SPARKS = 12;
+const HELD_CUR = 0.55; // current bomb scale in the launcher
+const HELD_NEXT = 0.45; // next bomb scale at the left shoulder
 const BLACK = new Color(0, 0, 0);
 
 export interface BombFrameOpts { t: number; still: boolean; low: boolean; colourAssist: boolean; showPop: boolean }
@@ -135,10 +138,10 @@ export class ArenaBombs {
       const swapping = st < 0.34;
       const arc = Math.sin(p * Math.PI) * 0.35;
       const cur = swapping ? this.lerpArc(this.c1, this.b, this.a, p, arc) : this.a;
-      const curS = swapping ? 0.55 + 0.07 * p : 0.62;
+      const curS = swapping ? HELD_NEXT + (HELD_CUR - HELD_NEXT) * p : HELD_CUR;
       this.drawLoose(cur.x, cur.y, cur.z, curS, engine.getCurrentBomb(), o, 1);
       const nx = swapping ? this.lerpArc(this.c2, this.a, this.b, p, arc) : this.b;
-      const nS = swapping ? 0.62 - 0.07 * p : 0.55;
+      const nS = swapping ? HELD_CUR - (HELD_CUR - HELD_NEXT) * p : HELD_NEXT;
       this.drawLoose(nx.x, nx.y, nx.z, nS, engine.getNextBomb(), o, o.low ? 0 : 0.9, o.still ? 0 : o.t * 0.7);
     }
     batch.end();

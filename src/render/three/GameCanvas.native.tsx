@@ -8,13 +8,16 @@ import { Canvas } from "@react-three/fiber/native";
 import { StyleSheet, View } from "react-native";
 import { ACESFilmicToneMapping, SRGBColorSpace } from "three";
 import type { GameCanvasProps } from "./GameCanvas";
+import { createGameRenderer } from "./renderer";
+
+const createRenderer = createGameRenderer({ antialias: true, alpha: false });
 
 export function GameCanvas({ children }: GameCanvasProps) {
   return (
     <View style={styles.fill}>
       <Canvas
         style={StyleSheet.absoluteFill}
-        gl={{ antialias: true, alpha: false }}
+        gl={createRenderer}
         camera={{ fov: 30, near: 1, far: 5000, position: [0, 0, 1000] }}
         onCreated={({ gl }) => {
           gl.toneMapping = ACESFilmicToneMapping;

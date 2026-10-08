@@ -8,6 +8,8 @@ import {
 } from "../src/arena/arenaMath";
 import { ArenaEngine } from "../src/game/arena";
 import { poseFor } from "../src/render/arena/stickPose";
+import { hasBaseRender, registerBaseRender, renderNoPresent } from "../src/render/three/renderer";
+import { Camera, Object3D, PerspectiveCamera, WebGLRenderer } from "three";
 
 let checks = 0;
 const assert = (cond: unknown, msg: string) => {
@@ -50,11 +52,16 @@ assert(Math.abs(vFovFor(16 / 9) - 49) < 0.6, `16:9 vfov ${vFovFor(16 / 9).toFixe
 assert(near(vFovFor(20 / 9), 45, 0.01), "20:9 clamps to 45");
 assert(near(vFovFor(9 / 19.5), 72, 0.01), "portrait clamps to 72");
 
-// 5. chase pose: behind (-F*4.8), right shoulder (+R*0.55), 3.4 up, ~16 deg down
+// 5. chase pose: behind (-F*4.8), right of the shoulder (+R*0.95), 3.4 up,
+//    looking at the launcher's line of fire (+R*0.22) ~15 deg down
 {
   const p = chasePose({ x: 1, z: 2 }, 0, RIG_LANDSCAPE);
-  assert(near(p.pos.x, 1 - 4.8) && near(p.pos.z, 2 + 0.55) && near(p.pos.y, 3.4), "chase position");
-  assert(near(p.target.x, 1 + 3.5) && near(p.target.y, 1.1), "look target ahead");
+  assert(near(p.pos.x, 1 - 4.8) && near(p.pos.z, 2 + 0.95) && near(p.pos.y, 3.4), "chase position");
+  assert(near(p.target.x, 1 + 3.5) && near(p.target.z, 2 + 0.22) && near(p.target.y, 1.25), "look target on the line of fire");
+  // stickman (feet line) is left of the view centre: camera->target vs camera->player
+  const fx = p.target.x - p.pos.x, fz = p.target.z - p.pos.z;
+  const px = 1 - p.pos.x, pz = 2 - p.pos.z;
+  assert(fx * pz - fz * px < 0, "stickman sits left of centre");
   const pitch = (Math.atan2(p.pos.y - p.target.y, Math.hypot(p.pos.x - p.target.x, p.pos.z - p.target.z)) * 180) / Math.PI;
   assert(pitch > 14 && pitch < 18, `pitch ~16 deg (${pitch.toFixed(1)})`);
 }
@@ -103,6 +110,35 @@ assert(near(vFovFor(9 / 19.5), 72, 0.01), "portrait clamps to 72");
   assert(lose.pitch < -1.3, "lose pose pitches back ~80 deg");
   const turnR = poseFor({ t: 0, dt: 1, speed: 0, forwardness: 1, yawRate: 3, recoil: 99, swap: 99, lose: -1, win: -1, loseDirX: 0, loseDirZ: 1 });
   assert(turnR.roll > 0, "turning right leans towards model-right (+roll)");
+}
+
+// 8. Render passes (QA blocker): three r186 defines render() per instance,
+//    so WebGLRenderer.prototype.render does not exist. Multi-pass frames use
+//    the instance's original render captured at creation, which keeps
+//    working after R3F native wraps gl.render to present (endFrameEXP).
+{
+  const proto = WebGLRenderer.prototype as unknown as Record<string, unknown>;
+  assert(typeof proto.render !== "function", "three has no prototype.render (never call it)");
+  const calls: string[] = [];
+  const fake = {
+    render: (_s: Object3D, _c: Camera) => {
+      calls.push("draw");
+    },
+  };
+  registerBaseRender(fake);
+  assert(hasBaseRender(fake), "base render captured");
+  const original = fake.render;
+  fake.render = (sc: Object3D, cam: Camera) => {
+    original(sc, cam);
+    calls.push("present"); // what R3F native's wrapper adds
+  };
+  const scene = new Object3D();
+  const cam = new PerspectiveCamera();
+  renderNoPresent(fake, scene, cam);
+  assert(calls.join() === "draw", "main pass draws without presenting");
+  fake.render(scene, cam);
+  assert(calls.join() === "draw,draw,present", "last pass presents once");
+  // (the source scan for prototype method calls: scripts/check-no-prototype-calls.mjs)
 }
 
 console.log(`arena controls: ${checks} checks passed`);

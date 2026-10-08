@@ -134,9 +134,12 @@ export class Stickman {
     this.pivots.elbowR.add(this.ring);
     this.muzzle.position.set(0, -0.62, 0);
     this.pivots.elbowR.add(this.muzzle);
-    this.cradle.position.set(0, -0.46, 0.42); // on top of the launcher (forearm +Z = up when aimed)
+    // current bomb sits in the launcher mouth at hand height (on the line of
+    // fire, below the camera's aim corridor), not on top of the launcher
+    this.cradle.position.set(0, -0.78, 0);
     this.pivots.elbowR.add(this.cradle);
-    this.shoulderSeat.position.set(0.38, 1.98, -0.12);
+    // next bomb beside the LEFT shoulder (model +X), out of the aim corridor
+    this.shoulderSeat.position.set(0.46, 1.36, -0.14);
     this.body.add(this.shoulderSeat);
 
     this.group.add(this.limbs, this.joints, this.limbHalo, this.jointHalo);

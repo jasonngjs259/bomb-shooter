@@ -78,7 +78,7 @@ export const Banner = memo(function Banner({ owner }: { owner: object }) {
   const scale = v.interpolate({ inputRange: [0, 0.7, 1, 2], outputRange: [0, 1.25, 1, 1] });
   const opacity = v.interpolate({ inputRange: [0, 0.2, 1, 2], outputRange: [0, 1, 1, 0] });
   return (
-    <View style={styles.bannerWrap} pointerEvents="none">
+    <View style={styles.bannerWrap}>
       <Animated.Text style={[styles.banner, { color: b.color, opacity, transform: [...ownLayer, { scale }] }]}>{b.text}</Animated.Text>
     </View>
   );
@@ -105,7 +105,7 @@ export function RotateToast() {
   }, []);
   if (!show) return null;
   return (
-    <View style={styles.toastWrap} pointerEvents="none">
+    <View style={styles.toastWrap}>
       <Text style={styles.toast}>ROTATE FOR BEST VIEW</Text>
     </View>
   );
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 12, borderRightWidth: 12, borderBottomWidth: 19,
     borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: palette.danger,
   },
-  bannerWrap: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "flex-start", paddingTop: "18%" },
+  bannerWrap: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "flex-start", paddingTop: "18%", pointerEvents: "none" },
   banner: { fontFamily: fonts.display, fontSize: 44, letterSpacing: 3, textAlign: "center" },
   click: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(7, 2, 15, 0.45)", cursor: "pointer" },
   clickCard: {
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   },
   clickTitle: { fontFamily: fonts.display, fontSize: 30, letterSpacing: 2, color: palette.textPrimary },
   clickSub: { fontFamily: fonts.label, fontSize: 14, letterSpacing: 1.5, color: palette.textSecondary },
-  toastWrap: { position: "absolute", left: 0, right: 0, bottom: 120, alignItems: "center" },
+  toastWrap: { position: "absolute", left: 0, right: 0, bottom: 120, alignItems: "center", pointerEvents: "none" },
   toast: {
     fontFamily: fonts.button, fontSize: 15, letterSpacing: 2, color: palette.textPrimary, paddingVertical: 8,
     paddingHorizontal: 16, borderRadius: 999, backgroundColor: "rgba(11, 4, 32, 0.88)", borderWidth: 1, borderColor: palette.cyan,

@@ -9,7 +9,8 @@ import type { ArenaConfig } from "./types";
  * ARENA 360 RULES (numbers = ARENA_CONFIG defaults, all overridable).
  * Read with ArenaEngine.ts (API) and types.ts (data shapes).
  *
- *   Field    L1: 90 bombs in an annulus r=10.5..16.5 around the full 360 deg,
+ *   Field    L1 (first-timer friendly): 60 bombs, creep x0.85. L2+: base 90
+ *            bombs in an annulus r=10.5..16.5 around the full 360 deg,
  *            in blobs of 1-2 touching clumps; a clump = 2-4 same-colour
  *            bombs; touching clumps never share a colour. Level n adds 12
  *            bombs (cap 150, reached at L6), the annulus grows outward at the
@@ -67,6 +68,8 @@ export const ARENA_CONFIG: ArenaConfig = {
   ringInner: 10.5,
   ringOuter: 16.5,
   bombCount: 90,
+  firstLevelBombs: 60,
+  firstLevelCreepScale: 0.85,
   bombsPerLevel: 12,
   maxBombs: 150,
   clumpMin: 2,
@@ -106,11 +109,13 @@ export interface LevelParams {
 // outward), +creepPerLevel base speed.
 export function levelParams(c: ArenaConfig, level: number): LevelParams {
   const lv = Math.max(1, Math.floor(level));
-  const count = Math.min(c.maxBombs, c.bombCount + (lv - 1) * c.bombsPerLevel);
+  const easy = lv === 1 && c.firstLevelBombs > 0;
+  const count = easy ? Math.min(c.maxBombs, c.firstLevelBombs) : Math.min(c.maxBombs, c.bombCount + (lv - 1) * c.bombsPerLevel);
   const inner = c.ringInner;
   const baseArea = c.ringOuter ** 2 - inner ** 2;
   const outer = Math.sqrt(inner ** 2 + (baseArea * count) / c.bombCount);
-  return { level: lv, count, inner, outer, creepSpeed: c.creepSpeed + (lv - 1) * c.creepPerLevel };
+  const creep = c.creepSpeed + (lv - 1) * c.creepPerLevel;
+  return { level: lv, count, inner, outer, creepSpeed: easy ? creep * c.firstLevelCreepScale : creep };
 }
 
 const randInt = (lo: number, hi: number, rand: RandomFn) => Math.floor(lo + rand() * (hi - lo + 1));

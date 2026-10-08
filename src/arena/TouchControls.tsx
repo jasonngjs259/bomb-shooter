@@ -5,7 +5,7 @@
 // Input goes straight into ArenaControls refs; the joystick visual moves
 // with Animated values, so nothing re-renders per touch move.
 
-import { memo, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import type { ArenaEngine } from "../game/arena";
@@ -37,13 +37,20 @@ export const TouchControls = memo(function TouchControls({
 }: Props) {
   const zoneW = width * (portrait ? 0.5 : 0.4) - insets.left - EDGE;
   const zoneH = height * (portrait ? 0.4 : 0.7) - insets.bottom - BOTTOM_EDGE;
-  const restX = 84;
-  const restY = zoneH - 84 + BOTTOM_EDGE; // = H - insetB - 84 on screen
+  // Idle ghost: fully inside the zone (which already sits inside the safe
+  // area, 20pt off the side edge and 16pt off the bottom).
+  const restX = BASE / 2 + 4;
+  const restY = Math.max(BASE / 2 + 4, zoneH - BASE / 2 - 4);
   const base = useRef(new Animated.ValueXY({ x: restX, y: restY })).current;
   const knob = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const baseOpacity = useRef(new Animated.Value(0.25)).current;
-  const latest = useRef({ restX, restY });
-  latest.current = { restX, restY };
+  const latest = useRef({ restX, restY, active: false });
+  latest.current.restX = restX;
+  latest.current.restY = restY;
+  // the zone size changes with layout / rotation: move the idle ghost too
+  useEffect(() => {
+    if (!latest.current.active) base.setValue({ x: restX, y: restY });
+  }, [restX, restY, base]);
 
   const gestures = useMemo(() => {
     let bx = 0;
@@ -53,6 +60,7 @@ export const TouchControls = memo(function TouchControls({
       .maxPointers(1)
       .runOnJS(true)
       .onBegin((e) => {
+        latest.current.active = true;
         bx = e.x;
         by = e.y;
         base.setValue({ x: bx, y: by });
@@ -79,6 +87,7 @@ export const TouchControls = memo(function TouchControls({
         controls.stick.forward = out.forward;
       })
       .onFinalize(() => {
+        latest.current.active = false;
         controls.stick.strafe = controls.stick.forward = 0;
         base.setValue({ x: latest.current.restX, y: latest.current.restY });
         knob.setValue({ x: 0, y: 0 });
@@ -102,7 +111,7 @@ export const TouchControls = memo(function TouchControls({
   const bottom = insets.bottom;
   const fireRing = BOMB_HEX[currentColor]?.glow ?? palette.cyan;
   return (
-    <View style={styles.fill} pointerEvents="box-none">
+    <View style={[styles.fill, styles.boxNone]}>
       <GestureDetector gesture={gestures.turn}>
         <View
           collapsable={false}
@@ -112,8 +121,7 @@ export const TouchControls = memo(function TouchControls({
       <GestureDetector gesture={gestures.stick}>
         <View collapsable={false} style={[styles.abs, { left: insets.left + EDGE, bottom: bottom + BOTTOM_EDGE, width: zoneW, height: zoneH }]}>
           <Animated.View
-            pointerEvents="none"
-            style={[styles.base, { opacity: baseOpacity, transform: [{ translateX: base.x }, { translateY: base.y }] }]}
+            style={[styles.base, styles.none, { opacity: baseOpacity, transform: [{ translateX: base.x }, { translateY: base.y }] }]}
           >
             <Animated.View style={[styles.knob, { transform: [{ translateX: knob.x }, { translateY: knob.y }] }]} />
           </Animated.View>
@@ -161,6 +169,8 @@ export const TouchControls = memo(function TouchControls({
 
 const styles = StyleSheet.create({
   fill: { ...StyleSheet.absoluteFill },
+  boxNone: { pointerEvents: "box-none" },
+  none: { pointerEvents: "none" },
   abs: { position: "absolute" },
   base: {
     position: "absolute",

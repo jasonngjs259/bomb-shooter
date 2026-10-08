@@ -58,7 +58,7 @@ export function ArenaEndCard({ won, score, best, isNewBest, level, time, combo, 
             </View>
           )}
         </View>
-        <View style={[landscape ? styles.colButtons : styles.colFull, !armed && styles.disarmed]} pointerEvents={armed ? "auto" : "none"}>
+        <View style={[landscape ? styles.colButtons : styles.colFull, !armed && styles.disarmed]}>
           {won ? (
             <Button label="Next level" size="md" onPress={onNext} />
           ) : (
@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   colStats: { flex: 1, gap: 6 },
   colButtons: { width: 250, alignItems: "center", gap: 10 },
   colFull: { alignItems: "center", gap: 8, alignSelf: "stretch" },
-  disarmed: { opacity: 0.45 },
+  disarmed: { opacity: 0.45, pointerEvents: "none" },
   title: { fontFamily: fonts.display, fontSize: 28, textAlign: "center", marginBottom: 6 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", alignSelf: "stretch" },
   rowLabel: { fontFamily: fonts.label, fontSize: 14, letterSpacing: 1.5, color: palette.textSecondary },

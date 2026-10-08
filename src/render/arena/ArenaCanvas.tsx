@@ -2,16 +2,18 @@
 // mapping) inside the GL error boundary, with one priority-1 frame callback
 // that runs the whole game step, renders the world and then the radar into
 // a scissored viewport. On native R3F's patched gl.render() presents the
-// frame (endFrameEXP), so the main pass uses the unpatched prototype render
-// and only the last pass presents.
+// frame (endFrameEXP), so the main pass uses the renderer's original
+// instance render (kept by createGameRenderer; three has no
+// WebGLRenderer.prototype.render) and only the last pass presents.
 
 import { useFrame, useThree } from "@react-three/fiber";
 import { memo, useEffect } from "react";
-import { PerspectiveCamera, WebGLRenderer } from "three";
+import { PerspectiveCamera } from "three";
 import { useSettings } from "../../ui/settings";
 import { rendererStatus, useRendererStatus } from "../status";
 import { GameCanvas } from "../three/GameCanvas";
 import { GLErrorBoundary } from "../three/GLErrorBoundary";
+import { renderNoPresent } from "../three/renderer";
 import { ArenaWorld } from "./ArenaWorld";
 
 function ArenaScene({ world }: { world: ArenaWorld }) {
@@ -33,7 +35,7 @@ function ArenaScene({ world }: { world: ArenaWorld }) {
       gl.render(scene, camera);
       return;
     }
-    WebGLRenderer.prototype.render.call(gl, scene, camera);
+    renderNoPresent(gl, scene, camera);
     const y = state.size.height - r.y - r.size;
     gl.autoClear = false;
     gl.clearDepth();

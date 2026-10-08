@@ -1,13 +1,15 @@
 // Arena 360 desktop controls (web only; spec section 6):
 //   WASD move (camera-relative)   Q/E or Left/Right turn   R face threat
 //   mouse: pointer-lock mouse-look (yaw only); if the lock is refused or
-//   unsupported, cursor-offset turning (6% dead zone, 180 deg/s at the edge)
+//   unsupported, cursor-edge turning: only in the outer 15% band of the
+//   screen and only while the cursor is over the playfield itself (not over
+//   a button / HUD card), up to 180 deg/s at the very edge
 //   left click / Space fire   X / Shift / right click swap   Esc / P pause
 // Esc while locked is eaten by the browser and releases the lock, which we
 // treat as pause. The "click to play" click that takes the lock never fires.
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { Platform, View } from "react-native";
 import type { ArenaEngine } from "../game/arena";
 import type { ArenaWorld } from "../render/arena/ArenaWorld";
 import { getSettings } from "../ui/settings";
@@ -24,7 +26,10 @@ interface Options {
   active: boolean; // playing (tutorial or game), not paused / ended
   onPause: () => void; // toggle
   onIdleKey: () => void; // Space / Enter while play isn't live (intro skip, end card)
+  rootRef: RefObject<View | null>; // the arena root view = the bare playfield
 }
+
+const EDGE_BAND = 0.15;
 
 const onButton = (t: EventTarget | null) =>
   typeof HTMLElement !== "undefined" && t instanceof HTMLElement && t.closest('[role="button"],button,[role="switch"]') !== null;
@@ -107,6 +112,9 @@ export function useArenaDesktopControls(o: Options) {
       if (k) latest.current.controls.keys[k] = false;
     };
     const onBlur = () => latest.current.controls.clear();
+    // RN-web: a View ref is its DOM element. Overlays that ignore pointer
+    // events (texts, canvas) let the root be the event target.
+    const onPlayfield = (t: EventTarget | null) => t !== null && t === (latest.current.rootRef.current as unknown as EventTarget | null);
     const onMove = (e: MouseEvent) => {
       const { controls, active } = latest.current;
       if (!active) return;
@@ -115,12 +123,13 @@ export function useArenaDesktopControls(o: Options) {
       } else if (lockRef.current === "fallback") {
         const half = window.innerWidth / 2;
         const off = (e.clientX - half) / half;
-        controls.cursorTurn = Math.abs(off) < 0.06 ? 0 : Math.sign(off) * ((Math.abs(off) - 0.06) / 0.94);
+        const edge = Math.abs(off) - (1 - EDGE_BAND);
+        controls.cursorTurn = onPlayfield(e.target) && edge > 0 ? Math.sign(off) * Math.min(1, edge / EDGE_BAND) : 0;
       }
     };
     const onDown = (e: MouseEvent) => {
       const { engine, active } = latest.current;
-      if (!active || lockRef.current === "none" || (lockRef.current === "fallback" && onButton(e.target))) return;
+      if (!active || lockRef.current === "none" || (lockRef.current === "fallback" && !onPlayfield(e.target))) return;
       if (e.button === 0) engine.fire();
       else if (e.button === 2) engine.swapBomb();
     };

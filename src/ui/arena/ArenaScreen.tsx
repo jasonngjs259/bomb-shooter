@@ -17,7 +17,7 @@ import { ArenaEngine } from "../../game/arena";
 import { getSimClock } from "../../game/clock";
 import { getFxBus } from "../../fx/bus";
 import { ArenaCanvas } from "../../render/arena/ArenaCanvas";
-import { ArenaWorld, RadarRect } from "../../render/arena/ArenaWorld";
+import { ArenaWorld, Box, RadarRect } from "../../render/arena/ArenaWorld";
 import { BoardLayout } from "../../render/layout";
 import { rendererStatus, useRendererStatus } from "../../render/status";
 import { FxTextOverlay } from "../../render/three/FxTextOverlay";
@@ -35,6 +35,14 @@ import { useArenaSession } from "./useArenaSession";
 
 type Stage = "intro" | "tutorial" | "play" | "end";
 
+// Dev-only (web): ?arenaBombs=12 shrinks level 1 so QA can reach the win /
+// NEXT LEVEL sequence quickly. Ignored in production builds and on native.
+const devLevel1Bombs = (): number | null => {
+  if (!__DEV__ || Platform.OS !== "web" || typeof window === "undefined") return null;
+  const n = Number(new URLSearchParams(window.location.search).get("arenaBombs"));
+  return Number.isFinite(n) && n >= 1 ? Math.min(150, Math.floor(n)) : null;
+};
+
 const finePointer = () =>
   Platform.OS === "web" && typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia("(pointer: fine)").matches
@@ -46,7 +54,11 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   const [area, setArea] = useState<{ width: number; height: number } | null>(null);
   const W = area?.width ?? win.width;
   const H = area?.height ?? win.height;
-  const engine = useMemo(() => new ArenaEngine(), []);
+  const engine = useMemo(() => {
+    const dev = devLevel1Bombs();
+    return new ArenaEngine(dev ? { config: { firstLevelBombs: dev } } : {});
+  }, []);
+  const rootRef = useRef<View>(null);
   const controls = useMemo(() => new ArenaControls(), []);
   const clock = getSimClock(engine);
   const bus = getFxBus(engine);
@@ -121,7 +133,7 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
 
   const togglePause = useCallback(() => setPaused((p) => !p), []);
   const { lock, requestLock, releaseLock } = useArenaDesktopControls({
-    enabled: desktopInput, engine, controls, world, active: live, onPause: togglePause, onIdleKey,
+    enabled: desktopInput, engine, controls, world, active: live, onPause: togglePause, onIdleKey, rootRef,
   });
   useEffect(() => {
     if (paused || stage === "end" || glDown) releaseLock();
@@ -129,10 +141,26 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
 
   // radar viewport (css px, top-left origin) and HUD placement
   const radar: RadarRect = desktopHud
-    ? { x: W - 24 - 240 + 40, y: Math.max(16, H / 2 - 260) + 8, size: 160 }
+    ? { x: W - 16 - 140, y: 16, size: 140 }
     : { x: insets.left + 12, y: insets.top + 12, size: portrait ? 80 : 88 };
+  // Threat arrows: playfield minus HUD bands; pushed out of HUD cards and
+  // the touch clusters (they render above the touch zones, see below).
+  const arrowRect: Box = desktopHud
+    ? { x: 16, y: 16, w: W - 32, h: H - 16 - 44 }
+    : { x: insets.left + 16, y: insets.top + (portrait ? 128 : 72), w: W - insets.left - insets.right - 32, h: 0 };
+  if (!desktopHud) arrowRect.h = H - insets.bottom - 16 - arrowRect.y;
+  const arrowAvoid: Box[] = desktopHud
+    ? [{ x: 16, y: 16, w: 236, h: 150 }, { x: radar.x, y: 16, w: 140, h: 140 + 8 + 86 }, { x: 16, y: H - 44, w: 560, h: 32 }]
+    : desktopInput
+      ? []
+      : [
+          { x: W - insets.right - 210, y: H - insets.bottom - 210, w: 210, h: 210 },
+          { x: insets.left + 20, y: H - insets.bottom - 16 - 150, w: 160, h: 150 },
+        ];
   useEffect(() => {
     world.radarRect = stage === "intro" ? null : radar;
+    world.arrowRect = arrowRect;
+    world.arrowAvoid = arrowAvoid;
   });
   const hudLeft = radar.x + radar.size + 12;
   const floatLayout: BoardLayout = useMemo(
@@ -147,23 +175,24 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   const res = session.result;
 
   return (
-    <View style={styles.root} onLayout={onLayout}>
+    <View ref={rootRef} style={styles.root} onLayout={onLayout}>
       <ArenaCanvas world={world} />
       <FxTextOverlay engine={engine} layout={floatLayout} />
-      {stage !== "intro" && stage !== "end" && (
-        <ArenaHud
-          hud={hud} best={session.best} desktop={desktopHud} radarSize={radar.size} left={hudLeft}
-          top={desktopHud ? Math.max(16, H / 2 - 260) : insets.top + 12} width={desktopHud ? W : W - hudLeft - insets.right - 12}
-          onPause={togglePause}
-        />
-      )}
-      {live && <ThreatArrows world={world} engine={engine} controls={controls} />}
+      {/* touch zones first: everything tappable below renders above them */}
       {!desktopInput && live && (
         <TouchControls
           engine={engine} controls={controls} width={W} height={H} insets={insets} portrait={portrait}
           currentColor={hud.current} nextColor={hud.next}
         />
       )}
+      {stage !== "intro" && stage !== "end" && (
+        <ArenaHud
+          hud={hud} best={session.best} desktop={desktopHud} radarSize={radar.size} left={hudLeft}
+          top={insets.top + 12} width={desktopHud ? W : W - hudLeft - insets.right - 12}
+          onPause={togglePause}
+        />
+      )}
+      {live && <ThreatArrows world={world} engine={engine} controls={controls} />}
       <ArenaTutorial
         engine={engine} controls={controls} desktop={desktopInput} active={stage === "tutorial" && !paused}
         bottom={insets.bottom + (desktopInput ? 32 : 200)} onDone={() => setStage("play")} onLaserWide={setLaserWide}

@@ -56,9 +56,12 @@ export function stickCurve(dx: number, dy: number, maxTravel: number): { strafe:
   return { strafe: (dx / len) * out, forward: (-dy / len) * out }; // screen y down = backwards
 }
 
-export interface RigParams { dist: number; height: number; lookAhead: number }
-export const RIG_LANDSCAPE: RigParams = { dist: 4.8, height: 3.4, lookAhead: 3.5 };
-export const RIG_PORTRAIT: RigParams = { dist: 6.2, height: 4.6, lookAhead: 4.5 };
+// side: camera offset to the right; aimSide: the look target sits on the
+// launcher's line of fire (right hand), so the aim corridor runs through the
+// screen centre and the stickman sits left of it; targetY: look height.
+export interface RigParams { dist: number; height: number; lookAhead: number; side: number; aimSide: number; targetY: number }
+export const RIG_LANDSCAPE: RigParams = { dist: 4.8, height: 3.4, lookAhead: 3.5, side: 0.95, aimSide: 0.22, targetY: 1.25 };
+export const RIG_PORTRAIT: RigParams = { dist: 6.2, height: 4.6, lookAhead: 4.5, side: 0.7, aimSide: 0.22, targetY: 1.25 };
 export const RIG_DANGER = { dist: 1.6, height: 1.4, fov: 5 };
 
 // Over-the-right-shoulder chase pose for feet position p and camera yaw.
@@ -66,8 +69,8 @@ export function chasePose(p: XZ, yaw: number, rig: RigParams): { pos: V3; target
   const f = facing(yaw);
   const r = rightOf(yaw);
   return {
-    pos: { x: p.x - f.x * rig.dist + r.x * 0.55, y: rig.height, z: p.z - f.z * rig.dist + r.z * 0.55 },
-    target: { x: p.x + f.x * rig.lookAhead, y: 1.1, z: p.z + f.z * rig.lookAhead },
+    pos: { x: p.x - f.x * rig.dist + r.x * rig.side, y: rig.height, z: p.z - f.z * rig.dist + r.z * rig.side },
+    target: { x: p.x + f.x * rig.lookAhead + r.x * rig.aimSide, y: rig.targetY, z: p.z + f.z * rig.lookAhead + r.z * rig.aimSide },
   };
 }
 

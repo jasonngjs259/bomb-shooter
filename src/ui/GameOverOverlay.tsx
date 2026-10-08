@@ -126,7 +126,7 @@ export function GameOverOverlay({ won, score, best, isNewBest, biggestCombo, sti
             <Text style={styles.badgeText}>NEW BEST</Text>
           </Animated.View>
         )}
-        <View style={[styles.buttons, !armed && styles.disarmed]} pointerEvents={armed ? "auto" : "none"}>
+        <View style={[styles.buttons, !armed && styles.disarmed]}>
           <Button label="Play again" size="lg" onPress={onRetry} />
           <Button label="Menu" size="md" variant="secondary" onPress={onMenu} />
           {Platform.OS === "web" && <Text style={styles.hint}>SPACE · PLAY AGAIN</Text>}
@@ -164,6 +164,6 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 14, paddingVertical: 4, borderRadius: 999, backgroundColor: palette.gold },
   badgeText: { fontFamily: fonts.button, fontSize: 16, letterSpacing: 2, color: palette.ink },
   buttons: { alignItems: "center", gap: spacing.md, alignSelf: "stretch" },
-  disarmed: { opacity: 0.45 },
+  disarmed: { opacity: 0.45, pointerEvents: "none" },
   hint: { fontFamily: fonts.label, fontSize: 12, letterSpacing: 1.5, color: palette.textMuted },
 });

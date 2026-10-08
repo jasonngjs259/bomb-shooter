@@ -107,7 +107,7 @@ export function ArenaTutorial({ engine, controls, desktop, active, bottom, onDon
   if (!active) {
     if (!swapHint) return null;
     return (
-      <View style={[styles.wrap, { bottom }]} pointerEvents="none">
+      <View style={[styles.wrap, styles.none, { bottom }]}>
         <View style={styles.pill}>
           <Text style={styles.text}>{desktop ? "X TO SWAP" : "TAP NEXT TO SWAP"}</Text>
         </View>
@@ -116,7 +116,7 @@ export function ArenaTutorial({ engine, controls, desktop, active, bottom, onDon
   }
   const copy = (desktop ? COPY.desktop : COPY.touch)[step];
   return (
-    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
+    <View style={[styles.wrap, styles.boxNone, { bottom }]}>
       <View style={styles.pill}>
         <Text style={styles.pips}>{step + 1}/3</Text>
         <Text style={styles.text}>{copy}</Text>
@@ -131,6 +131,8 @@ export function ArenaTutorial({ engine, controls, desktop, active, bottom, onDon
 
 const styles = StyleSheet.create({
   wrap: { position: "absolute", left: 0, right: 0, alignItems: "center" },
+  none: { pointerEvents: "none" },
+  boxNone: { pointerEvents: "box-none" },
   pill: {
     flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 6, borderRadius: 999,
     backgroundColor: palette.panel, borderWidth: 1.5, borderColor: palette.panelBorder, maxWidth: "92%",
