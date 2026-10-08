@@ -1,7 +1,9 @@
 // Arena aim guide (spec section 5): a flat glowing ribbon from the launcher
-// muzzle to the aim ray's end (segment A slants down to bomb height over the
-// first 3.0 w, ~13 deg, and the character's barrel is aimed along it;
-// segment B is flat), with marching dashes, a fade along its
+// muzzle to the aim ray's end. Segment A is a curve that leaves the muzzle
+// along the barrel (towards the point 3.0 w down the aim line at bomb
+// height, where the character aims) and joins the aim line tangentially
+// 1.5 w later, so neither the slant nor the cannon's side offset leaves a
+// kink; segment B is flat. Marching dashes, a fade along its
 // length and a faded tip on a miss; a ghost bomb at the landing point with a
 // rotating dashed ring and a ground decal ring. World units.
 
@@ -26,6 +28,7 @@ uniform float uLen;
 uniform float uMiss;
 uniform float uAlpha;
 uniform float uWide;
+uniform float uStartFade; // w faded in from the start (relaxed stance)
 varying vec2 vLine;
 void main() {
   float x = abs(vLine.y);
@@ -34,6 +37,7 @@ void main() {
   float dash = step(fract((vLine.x - uTime * 2.0) / 0.5), 0.6);
   float a = mix(0.9, 0.35, clamp(vLine.x / max(uLen, 0.001), 0.0, 1.0));
   if (uMiss > 0.5) a *= 1.0 - smoothstep(uLen - 2.0, uLen, vLine.x);
+  if (uStartFade > 0.001) a *= smoothstep(0.0, uStartFade, vLine.x);
   a *= (core * (0.35 + 0.65 * dash) + halo) * uAlpha;
   gl_FragColor = vec4(mix(uColor, vec3(1.0), core * 0.5) * a, 1.0);
   #include <colorspace_fragment>
@@ -54,6 +58,9 @@ void main() { vLocal = position; gl_Position = projectionMatrix * modelViewMatri
 const HALF = 0.11; // halo half width (core 0.05 w)
 const BOMB_Y = 0.45;
 export const SEG_A = 3.0; // w along the ray where the slant meets bomb height
+const JOIN = 1.5; // w further on, the curve meets the aim line
+const CURVE = 8; // samples on segment A (incl. both ends)
+const POINTS = CURVE + 1; // + the end of segment B
 
 // End of segment A (world): where the barrel points (character spec 4).
 export function segmentAEnd(ray: AimRay, yaw: number, out: Vector3) {
@@ -64,8 +71,9 @@ export function segmentAEnd(ray: AimRay, yaw: number, out: Vector3) {
 
 export class AimLaser {
   readonly group = new Group();
-  private readonly pos = new Float32Array(6 * 3);
-  private readonly line = new Float32Array(6 * 2);
+  private readonly pos = new Float32Array(POINTS * 2 * 3);
+  private readonly line = new Float32Array(POINTS * 2 * 2);
+  private readonly p2 = new Vector3();
   private readonly geo = new BufferGeometry();
   private readonly mat: ShaderMaterial;
   private readonly ghost: Mesh;
@@ -79,13 +87,18 @@ export class AimLaser {
   constructor() {
     this.geo.setAttribute("position", new BufferAttribute(this.pos, 3));
     this.geo.setAttribute("aLine", new BufferAttribute(this.line, 2));
-    this.geo.setIndex([0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5]);
+    const index: number[] = [];
+    for (let i = 0; i < POINTS - 1; i++) {
+      const v = i * 2;
+      index.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+    }
+    this.geo.setIndex(index);
     this.mat = new ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
       uniforms: {
         uColor: { value: new Color() }, uTime: { value: 0 }, uLen: { value: 1 }, uMiss: { value: 0 },
-        uAlpha: { value: 1 }, uWide: { value: 1 },
+        uAlpha: { value: 1 }, uWide: { value: 1 }, uStartFade: { value: 0 },
       },
       transparent: true,
       depthWrite: false,
@@ -111,25 +124,42 @@ export class AimLaser {
     this.group.add(laser, this.ghost, this.ring, this.decal);
   }
 
-  // alpha: 0..1 fade (hidden while a shot flies); wide: tutorial highlight
-  update(ray: AimRay, muzzle: Vector3, yaw: number, glow: Color, time: number, alpha: number, still: boolean, wide = 1) {
+  // alpha: 0..1 fade (hidden while a shot flies); wide: tutorial highlight;
+  // startFade: w of the beam's start faded in (cannon lowered)
+  update(ray: AimRay, muzzle: Vector3, yaw: number, glow: Color, time: number, alpha: number, still: boolean, wide = 1, startFade = 0) {
     this.group.visible = alpha > 0.01;
     if (!this.group.visible) return;
     const len = Math.hypot(ray.to.x - ray.from.x, ray.to.z - ray.from.z);
-    const aLen = Math.min(SEG_A, len);
+    const dx = Math.cos(yaw);
+    const dz = Math.sin(yaw);
+    // quadratic curve: muzzle -> (control) segment A end -> join point
     segmentAEnd(ray, yaw, this.p1);
-    const rx = -Math.sin(yaw); // right of the aim
-    const rz = Math.cos(yaw);
+    const j = Math.min(SEG_A + JOIN, len); // short rays end the curve at the hit
+    this.p2.set(ray.from.x + dx * j, BOMB_Y, ray.from.z + dz * j);
+    const rx = -dz; // right of the aim
+    const rz = dx;
     const w = HALF * wide;
-    this.vert(0, muzzle.x, muzzle.y, muzzle.z, 0, rx, rz, w);
-    this.vert(1, this.p1.x, this.p1.y, this.p1.z, aLen, rx, rz, w);
-    this.vert(2, ray.to.x, BOMB_Y, ray.to.z, Math.max(len, aLen + 0.01), rx, rz, w);
+    let along = 0;
+    let px = muzzle.x, py = muzzle.y, pz = muzzle.z;
+    for (let i = 0; i < CURVE; i++) {
+      const t = i / (CURVE - 1);
+      const u = 1 - t;
+      const x = u * u * muzzle.x + 2 * u * t * this.p1.x + t * t * this.p2.x;
+      const y = u * u * muzzle.y + 2 * u * t * this.p1.y + t * t * this.p2.y;
+      const z = u * u * muzzle.z + 2 * u * t * this.p1.z + t * t * this.p2.z;
+      along += Math.hypot(x - px, y - py, z - pz);
+      this.vert(i, x, y, z, along, rx, rz, w);
+      px = x; py = y; pz = z;
+    }
+    const total = Math.max(along + 0.01, along + Math.max(0, len - j));
+    this.vert(CURVE, ray.to.x, BOMB_Y, ray.to.z, total, rx, rz, w);
     this.geo.getAttribute("position").needsUpdate = true;
     this.geo.getAttribute("aLine").needsUpdate = true;
     const u = this.mat.uniforms;
     (u.uColor.value as Color).copy(glow);
     u.uTime.value = still ? 0 : time;
-    u.uLen.value = Math.max(len, 0.01);
+    u.uLen.value = Math.max(total, 0.01);
+    u.uStartFade.value = startFade;
     u.uMiss.value = ray.landing ? 0 : 1;
     u.uAlpha.value = alpha;
     u.uWide.value = 1;

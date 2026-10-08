@@ -20,10 +20,12 @@ export const CAM_OMEGA = { forward: 12, lateral: 11, height: 10, look: 14, yawMo
 const FF_MOUSE = 0.9; // yaw feed-forward share (mouse), the rest is sprung
 const FF_SOFT = 0.5;
 const LATERAL_MAX = 1.0; // w
+const FWD_CLOSE = 0.15; // w the camera may lag towards the player
 const FOV_KICK = 3; // deg
 
 export const INTRO_TIME = 2.8;
-type Mode = "intro" | "chase" | "crane" | "orbit";
+export type CameraMode = "intro" | "chase" | "crane" | "orbit";
+type Mode = CameraMode;
 
 export class ChaseCamera {
   yaw = -Math.PI / 2; // smoothed camera heading (movement is relative to it)
@@ -36,7 +38,8 @@ export class ChaseCamera {
   private pull = 0; // 0..1 danger pull-back
   private pullHold = 0;
   private lastYaw = -Math.PI / 2;
-  private focus = new Vector3();
+  private readonly focus = new Vector3();
+  private readonly player = new Vector3();
   private curve: CatmullRomCurve3 | null = null;
   private fovFrom = 72;
   private readonly sF: SpringState = { x: 0, v: 0 };
@@ -67,10 +70,16 @@ export class ChaseCamera {
   get introT() {
     return this.mode === "intro" ? this.t : INTRO_TIME;
   }
-  crane(x: number, z: number) {
+  // Lose: frame the player's fall in the foreground and the breach (bx, bz)
+  // behind it, from the player's side (px, pz = where the player stood).
+  crane(bx: number, bz: number, px: number, pz: number) {
     this.mode = "crane";
     this.t = 0;
-    this.focus.set(x, 0.5, z);
+    this.focus.set(bx, 0.5, bz);
+    this.player.set(px, 0, pz);
+  }
+  get modeName(): Mode {
+    return this.mode;
   }
   orbit() {
     this.mode = "orbit";
@@ -85,6 +94,7 @@ export class ChaseCamera {
   update(cam: PerspectiveCamera, dt: number, px: number, pz: number, yaw: number, aspect: number,
     danger: number, rearDanger: number, shakeX: number, shakeY: number) {
     this.t += dt;
+    if (this.mode === "intro" && this.t >= INTRO_TIME) this.mode = "chase"; // intro over (or skipped)
     const portrait = aspect < 1;
     const rig = portrait ? RIG_PORTRAIT : RIG_LANDSCAPE;
     // danger pull-back (600 ms ease in, release after 1200 ms below)
@@ -93,7 +103,12 @@ export class ChaseCamera {
     this.pull = clamp01(this.pull + (hot || this.pullHold > 0 ? dt : -dt) / 0.6);
     const pk = easeInOutCubic(this.pull);
     const fov = vFovFor(aspect) + RIG_DANGER.fov * pk;
-    const live = { ...rig, dist: rig.dist + RIG_DANGER.dist * pk, height: rig.height + RIG_DANGER.height * pk };
+    // very wide screens (phone landscape) are short: look a little lower so
+    // the feet stay in frame
+    const live = {
+      ...rig, dist: rig.dist + RIG_DANGER.dist * pk, height: rig.height + RIG_DANGER.height * pk,
+      targetY: rig.targetY - (aspect >= 1.9 ? 0.55 : 0),
+    };
 
     // camera yaw follows the aim: feed-forward share + critically damped rest
     const turn = angleDiff(this.lastYaw, yaw);
@@ -156,12 +171,21 @@ export class ChaseCamera {
     }
     cam.up.set(0, 1, 0);
     if (this.mode === "crane") {
-      const k = easeInOutCubic(clamp01((this.t - 0.2) / 1.2));
-      this.crn.set(this.focus.x - Math.cos(this.yaw) * 8, 14, this.focus.z - Math.sin(this.yaw) * 8);
+      // camera 5.5 w behind the player on the far side from the breach,
+      // 3.6 up, looking 35% (15% on short screens) of the way to the breach: the fall reads in the
+      // foreground, the breach behind it
+      const k = easeInOutCubic(clamp01((this.t - 0.1) / 1.0));
+      const dx = this.focus.x - this.player.x;
+      const dz = this.focus.z - this.player.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const ux = dx / len, uz = dz / len;
+      this.crn.set(this.player.x - ux * 5.5 - uz * 1.2, 3.6, this.player.z - uz * 5.5 + ux * 1.2);
       want.lerp(this.crn, k);
-      lookX += (this.focus.x - lookX) * k;
-      lookY += (this.focus.y - lookY) * k;
-      lookZ += (this.focus.z - lookZ) * k;
+      const lf = aspect >= 1.9 ? 0.15 : 0.35; // short phone screens: favour the fall
+      const fx = this.player.x + dx * lf, fz = this.player.z + dz * lf;
+      lookX += (fx - lookX) * k;
+      lookY += (0.6 - lookY) * k;
+      lookZ += (fz - lookZ) * k;
     } else if (this.mode === "orbit") {
       const a = this.yaw + Math.PI + (this.still ? 0 : (this.t / 3) * Math.PI * 2);
       want.set(px + Math.cos(a) * 4.5, 2.0, pz + Math.sin(a) * 4.5);
@@ -213,6 +237,12 @@ export class ChaseCamera {
     const wF = want.x * fx + want.z * fz;
     const wR = want.x * rx + want.z * rz;
     cdStep(this.sF, wF, CAM_OMEGA.forward, dt);
+    // backpedalling: never let the lag bring the camera closer than
+    // FWD_CLOSE (the feet would leave the bottom of the frame)
+    if (this.sF.x > wF + FWD_CLOSE) {
+      this.sF.x = wF + FWD_CLOSE;
+      this.sF.v = Math.min(0, this.sF.v);
+    }
     cdStep(this.sR, wR, CAM_OMEGA.lateral, dt);
     cdStep(this.sY, want.y, CAM_OMEGA.height, dt);
     if (Math.abs(this.sR.x - wR) > LATERAL_MAX) {

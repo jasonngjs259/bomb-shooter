@@ -82,15 +82,22 @@ export function useAimInput({ engine, layout, screenToBoard, onStart }: Options)
         setPointerDown(false);
       });
 
+    // Aim on every hover event, including the first one of a move that
+    // starts the gesture (onBegin), so a single jump of the cursor updates
+    // the guide on the same frame
+    const hoverAim = (x: number, y: number) => {
+      const p = toBoard(x, y);
+      // Don't swing the aim while the cursor rests on the swap button
+      if (!onNext(x, y)) engine.aimAt(p.x, p.y);
+      setKeyboardAim(false);
+    };
     const hover = Gesture.Hover()
       .runOnJS(true)
-      .onBegin(() => setHovering(true))
-      .onUpdate((e) => {
-        const p = toBoard(e.x, e.y);
-        // Don't swing the aim while the cursor rests on the swap button
-        if (!onNext(e.x, e.y)) engine.aimAt(p.x, p.y);
-        setKeyboardAim(false);
+      .onBegin((e) => {
+        setHovering(true);
+        hoverAim(e.x, e.y);
       })
+      .onUpdate((e) => hoverAim(e.x, e.y))
       .onFinalize(() => setHovering(false));
 
     return Gesture.Simultaneous(pan, hover);

@@ -54,6 +54,8 @@ export const ThreatArrows = memo(function ThreatArrows({ world, engine, controls
               <View style={styles.head} />
               <View style={styles.tip} />
             </View>
+            {/* behind-you marker (unrotated) */}
+            {t.behind && <Text style={styles.behind}>!</Text>}
           </Pressable>
         );
       })}
@@ -131,6 +133,10 @@ export function LostCard({ onRetry, onClassic }: { onRetry: () => void; onClassi
 
 const styles = StyleSheet.create({
   arrowHit: { position: "absolute", width: 56, height: 56, alignItems: "center", justifyContent: "center" },
+  behind: {
+    position: "absolute", right: 0, top: 0, minWidth: 16, height: 16, borderRadius: 8, overflow: "hidden",
+    backgroundColor: "#FF2D55", color: "#FFFFFF", fontFamily: fonts.display, fontSize: 11, lineHeight: 16, textAlign: "center",
+  },
   arrow: { width: 18, height: 32 },
   headOutline: {
     position: "absolute", left: -2, top: -3, width: 0, height: 0,

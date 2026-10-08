@@ -24,7 +24,7 @@ export interface CharacterAsset { scene: Object3D; animations: AnimationClip[] }
 
 const STEP_AT = 45 * DEG; // standing: legs step once the aim is this far off
 const STEP_TIME = 0.26;
-const MOVE_LAG = 45 * DEG;
+const MOVE_LAG = 65 * DEG; // max legs-vs-aim offset while moving (twist limit)
 const SHUFFLE_RATE = 90 * DEG;
 const LEGS_RATE = 400 * DEG; // max legs turn speed while moving, rad/s
 const SLIDE = 1.0; // w blown back on lose (spec 1.5 pushed the bigger figure out of the crane shot)
@@ -58,6 +58,8 @@ export class Character implements Avatar {
   private winning = false;
   private dropped = false;
   private readonly dropVel = new Vector3();
+  private readonly combatMuzzle = new Vector3(0.88, 1.1, 0.12);
+  private lastFrame: AvatarFrame | null = null;
   // per-frame inputs, reused (no allocation in update)
   private readonly animIn: AnimInput = { dt: 0, speed: 0, theta: 0, step: 0, stepRate: 1.4 };
   private readonly driveIn: PostureDrive = {
@@ -208,6 +210,8 @@ export class Character implements Avatar {
     p.weight = 1 - this.animator.fullW;
     p.low = f.low;
     this.posture.apply(p);
+    if (this.winning) this.posture.cheer(this.animator.fullW);
+    this.trackCombatMuzzle(f);
     this.body.setDanger(this.losing >= 0 ? 1 : Math.min(1, Math.max(0, (f.danger - 0.6) / 0.4)));
     this.body.setRim(!f.low);
     this.body.setVisor(1 - 0.5 * this.state.barrelDip / (5 * DEG));
@@ -231,8 +235,10 @@ export class Character implements Avatar {
       const target = wrapAngle(f.yaw + w.offset * smoothstep(0.3, 1.2, speed));
       const next = expDampAngle(this.legsYaw, target, 18, dt);
       this.legsYaw = wrapAngle(this.legsYaw + clamp(angleDiff(this.legsYaw, next), -LEGS_RATE * dt, LEGS_RATE * dt));
-      const lag = angleDiff(this.legsYaw, target);
-      if (Math.abs(lag) > MOVE_LAG) this.legsYaw = wrapAngle(target - Math.sign(lag) * MOVE_LAG);
+      // the torso twist covers up to 65 deg; only the aim itself may drag
+      // the legs (never a warp target jump: that would pop)
+      const legsOff = angleDiff(f.yaw, this.legsYaw);
+      if (Math.abs(legsOff) > MOVE_LAG) this.legsYaw = wrapAngle(f.yaw + Math.sign(legsOff) * MOVE_LAG);
       return;
     }
     this.moveAxis = 0;
@@ -291,6 +297,32 @@ export class Character implements Avatar {
       this.dropVel.z *= 0.6;
     }
     g.rotateX(dt * 4 * Math.min(1, this.dropVel.length()));
+  }
+
+  // Where the laser starts: the muzzle in combat stance; while the cannon
+  // is lowered (relaxed) the last combat muzzle, relative to the aim, so the
+  // beam doesn't bend down to the lowered barrel.
+  get aimReady() { return this.state.stance; }
+  laserStart(out: Vector3) {
+    this.posture.muzzle(out);
+    const k = 1 - this.state.stance;
+    if (k <= 0 || this.losing >= 0) return out;
+    const f = this.lastFrame;
+    if (!f) return out;
+    const c = Math.cos(f.yaw), s = Math.sin(f.yaw);
+    const m = this.combatMuzzle;
+    const x = f.x + c * m.x - s * m.z;
+    const z = f.z + s * m.x + c * m.z;
+    return out.set(out.x + (x - out.x) * k, out.y + (m.y - out.y) * k, out.z + (z - out.z) * k);
+  }
+  // muzzle in aim space (x forward, y up, z right) while in combat stance
+  private trackCombatMuzzle(f: AvatarFrame) {
+    this.lastFrame = f;
+    if (this.state.stance < 0.99 || this.losing >= 0 || this.winning) return;
+    const p = this.posture.muzzle(tmpV);
+    const dx = p.x - f.x, dz = p.z - f.z;
+    const c = Math.cos(f.yaw), s = Math.sin(f.yaw);
+    this.combatMuzzle.set(dx * c + dz * s, p.y, -dx * s + dz * c);
   }
 
   muzzleWorld(out: Vector3) { return this.posture.muzzle(out); }

@@ -180,6 +180,21 @@ export class Posture {
     this.blaster.slide.position.z = -0.06 * s.recoil * w;
   }
 
+  // Win: swing the cannon arm up (skyward, a little forward and out), k 0..1.
+  cheer(k: number) {
+    const arm = this.b.upperArmR;
+    if (!arm || k <= 0) return;
+    this.model.updateMatrixWorld(true);
+    this.model.getWorldQuaternion(this.q1);
+    this.v2.set(-0.3, 1, 0.3).normalize().applyQuaternion(this.q1);
+    aimBone(arm, this.barrel(this.v1), this.v2, Math.PI, k);
+    arm.updateMatrixWorld(true);
+    if (this.b.handR) {
+      aimBone(this.b.handR, this.barrel(this.v1), this.v2, CCD_MAX, k);
+      this.b.handR.updateMatrixWorld(true);
+    }
+  }
+
   // Desired barrel direction (world): towards the aim point, rotated down.
   private desired(aim: Vector3, drop: number, out: Vector3) {
     this.muzzle(this.v3);

@@ -26,8 +26,7 @@ export interface RigConfig {
   // ground speed the clip was authored for, w/s at `height` (foot plant)
   nativeSpeed: Partial<Record<ClipRole, number>>;
   materials: Record<string, MaterialRole>;
-  // pull a slot's surface inwards (m along -normal): the Astronaut's visor
-  // shell sits almost on the helmet and z-fights through its back
+  // pull a slot's surface inwards (m along -normal), against z-fighting
   inset: Record<string, number>;
 }
 
@@ -79,7 +78,7 @@ export const ASTRONAUT: RigConfig = {
     SciFi_MainDark: "suit",
     Grey: "visor",
   },
-  inset: { Grey: 0.025 },
+  inset: { Grey: 0.008 },
 };
 
 export function findBone(root: Object3D, [name, alias]: [string, RegExp]): Object3D | null {

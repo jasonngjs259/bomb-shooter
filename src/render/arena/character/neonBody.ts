@@ -6,7 +6,7 @@
 // the trim and a fresnel rim (rim off on the low tier).
 
 import {
-  BufferAttribute, BufferGeometry, Color, Float32BufferAttribute, Matrix4, MeshStandardMaterial, Object3D, SkinnedMesh, Vector3,
+  BufferAttribute, BufferGeometry, Color, Float32BufferAttribute, Matrix3, Matrix4, MeshStandardMaterial, Object3D, SkinnedMesh, Vector3,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { MaterialRole } from "./rig";
@@ -37,6 +37,30 @@ function roleOf(name: string, color: Color, roles: Record<string, MaterialRole>)
   color.getHSL(hsl);
   if (hsl.s > 0.45) return "trim";
   return hsl.l > 0.45 ? "plates" : "suit";
+}
+
+// 1 for verts on the front of a primitive (world normal z > 0.3, in front
+// of the primitive's bounds centre).
+function frontMask(g: BufferGeometry, m: Object3D) {
+  const pos = g.getAttribute("position");
+  const nor = g.getAttribute("normal");
+  const nm = new Matrix3().getNormalMatrix(m.matrixWorld);
+  const v = new Vector3();
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  const zs = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    zs[i] = v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).z;
+    minZ = Math.min(minZ, zs[i]);
+    maxZ = Math.max(maxZ, zs[i]);
+  }
+  const mid = (minZ + maxZ) / 2;
+  const out = new Uint8Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const nz = v.fromBufferAttribute(nor, i).applyMatrix3(nm).normalize().z;
+    out[i] = nz > 0.3 && zs[i] > mid ? 1 : 0;
+  }
+  return out;
 }
 
 export function buildNeonBody(root: Object3D, roles: Record<string, MaterialRole>, inset: Record<string, number> = {}): NeonBody {
@@ -74,12 +98,20 @@ export function buildNeonBody(root: Object3D, roles: Record<string, MaterialRole
     const n = g.getAttribute("position").count;
     const col = new Float32Array(n * 3);
     const glow = new Float32Array(n);
+    // a visor slot only glows where it faces forward (bind pose, model
+    // faces +Z): the Astronaut's visor shell also wraps the helmet back,
+    // where it showed as pink streaks through the plates
+    const visor = role === ROLE.visor;
+    const front = visor ? frontMask(g, m) : null;
+    const dark = new Color(ROLE.suit.color);
     c.set(role.color);
     for (let i = 0; i < n; i++) {
-      col[i * 3] = c.r;
-      col[i * 3 + 1] = c.g;
-      col[i * 3 + 2] = c.b;
-      glow[i] = role.glow;
+      const on = !front || front[i] === 1;
+      const cc = on ? c : dark;
+      col[i * 3] = cc.r;
+      col[i * 3 + 1] = cc.g;
+      col[i * 3 + 2] = cc.b;
+      glow[i] = on ? role.glow : 0;
     }
     g.setAttribute("color", new Float32BufferAttribute(col, 3));
     g.setAttribute("aGlow", new Float32BufferAttribute(glow, 1));

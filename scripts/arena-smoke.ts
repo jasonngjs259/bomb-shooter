@@ -80,6 +80,8 @@ function session(
   };
   while (!introDone && frames < 400) step();
   assert(introDone, `${name}: intro sweep finished (${frames} frames)`);
+  step();
+  assert(world.chase.modeName === "chase", `${name}: first game's camera is in chase mode after the intro (${world.chase.modeName})`);
   const introFrames = frames;
   world.radarRect = { x: W - 156, y: 16, size: 140 };
   world.playing = true;
@@ -145,6 +147,8 @@ async function characterRun() {
   engine.setCreepPaused(true);
   world.startIntro();
   world.chase.skipIntro();
+  world.frame(camera, DT, 1);
+  assert(world.chase.modeName === "chase", "skipped intro hands over to the chase camera");
   world.playing = true;
   controls.enabled = true;
 

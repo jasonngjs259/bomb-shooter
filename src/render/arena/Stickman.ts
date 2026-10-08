@@ -237,7 +237,9 @@ export class Stickman implements Avatar {
   }
 
   // World position helpers (valid after update()).
+  readonly aimReady = 1;
   muzzleWorld(out: Vector3) { return this.muzzle.getWorldPosition(out); }
+  laserStart(out: Vector3) { return this.muzzleWorld(out); }
   barrelWorld(out: Vector3) {
     this.pivots.elbowR.getWorldPosition(this.v);
     return this.muzzle.getWorldPosition(out).sub(this.v).normalize();

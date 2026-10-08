@@ -10,12 +10,16 @@ import { useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { astronautBytes } from "./src/render/arena/character/astronautAsset";
 import { ArenaScreen } from "./src/ui/arena/ArenaScreen";
 import { GameScreen } from "./src/ui/GameScreen";
 import { initSettings } from "./src/ui/settings";
 import { palette } from "./src/ui/theme";
 
 initSettings();
+// Fetch the Arena character model in the background from app start, so it is
+// usually ready before an Arena intro ends (failures retry in Arena).
+astronautBytes().catch(() => undefined);
 
 export default function App() {
   // Orbitron + Rajdhani load before the title so the logo never flashes a

@@ -221,7 +221,10 @@ export class ArenaFx {
       });
     }
     this.later(0.7, () => this.avatar().lose(x, z));
-    this.later(0.9, () => this.camera.crane(x, z));
+    this.later(0.9, () => {
+      const sh = this.engine.getShooter();
+      this.camera.crane(x, z, sh.x, sh.z);
+    });
   }
 
   private win() {

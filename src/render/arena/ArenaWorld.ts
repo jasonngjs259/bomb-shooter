@@ -33,7 +33,7 @@ import { Character } from "./character/Character";
 import { parseCharacter } from "./character/loadCharacter";
 import { Stickman } from "./Stickman";
 
-export interface Threat { x: number; y: number; rot: number; d: number; angle: number }
+export interface Threat { x: number; y: number; rot: number; d: number; angle: number; behind: boolean }
 export interface RadarRect { x: number; y: number; size: number } // css px, top-left origin
 export interface Box { x: number; y: number; w: number; h: number } // css px
 export type CharacterSource = () => Promise<ArrayBuffer>;
@@ -48,7 +48,7 @@ export class ArenaWorld {
   avatar: Avatar = this.stick;
   avatarKind: AvatarKind = "stickman";
   character: Character | null = null;
-  readonly threats: Threat[] = [0, 1, 2, 3].map(() => ({ x: 0, y: 0, rot: 0, d: 0, angle: 0 }));
+  readonly threats: Threat[] = [0, 1, 2, 3].map(() => ({ x: 0, y: 0, rot: 0, d: 0, angle: 0, behind: false }));
   threatCount = 0;
   radarRect: RadarRect | null = null;
   // Threat arrows sit on the ellipse inscribed in arrowRect (the playfield
@@ -252,7 +252,10 @@ export class ArenaWorld {
     this.bombs.frame(e, this.avatar, { t: this.realT, still, low, colourAssist: settings.colourAssist, showPop: this.aimAlpha > 0.5 });
     this.glow.end();
     this.decals.end();
-    this.laser.update(ray, this.avatar.muzzleWorld(this.mv), s.yaw, this.muzzleColor, this.realT, this.aimAlpha, still, this.laserWide);
+    // relaxed stance: the beam starts where the combat muzzle would be and
+    // fades in over its first metre (it no longer matches the lowered gun)
+    const relaxed = 1 - this.avatar.aimReady;
+    this.laser.update(ray, this.avatar.laserStart(this.mv), s.yaw, this.muzzleColor, this.realT, this.aimAlpha, still, this.laserWide, relaxed * 1.2);
 
     this.ground.update({
       time: this.realT, danger: e.getDangerLevel(), sectors, playerX: s.x, playerZ: s.z, low,
@@ -305,11 +308,13 @@ export class ArenaWorld {
       if (!behind && Math.abs(this.pv.x) < 0.95 && Math.abs(this.pv.y) < 0.95) continue;
       const sx = (this.pv.x * 0.5 + 0.5) * this.W; // projected point (valid in front)
       const sy = (-this.pv.y * 0.5 + 0.5) * this.H;
-      // on-screen direction to the threat from the view centre, from camera
-      // space (also right for points behind the camera): x right, y down
+      // on-screen direction to the threat from the view centre (0 = up,
+      // clockwise): from camera space for threats in front, from the ground
+      // heading for threats behind (down = behind), so those sit on the
+      // lower ring and never among the bombs on the horizon
       this.mv.set(px, 0.3, pz).applyMatrix4(camera.matrixWorldInverse);
-      let ang = Math.atan2(this.mv.x, this.mv.y); // 0 = up, clockwise
-      if (Math.hypot(this.mv.x, this.mv.y) < 1e-4) ang = angleDiff(this.chase.yaw, Math.atan2(pz - s.z, px - s.x));
+      let ang = Math.atan2(this.mv.x, this.mv.y);
+      if (behind || Math.hypot(this.mv.x, this.mv.y) < 1e-4) ang = angleDiff(this.chase.yaw, Math.atan2(pz - s.z, px - s.x));
       const t = this.threats[n++];
       t.x = cx + Math.sin(ang) * Math.max(0, r.w / 2 - 28);
       t.y = cy - Math.cos(ang) * Math.max(0, r.h / 2 - 28);
@@ -323,6 +328,7 @@ export class ArenaWorld {
       const rot = behind ? ang : Math.atan2(sx - t.x, -(sy - t.y));
       t.rot = (rot * 180) / Math.PI;
       t.d = c.d;
+      t.behind = behind;
       t.angle = Math.atan2(pz - s.z, px - s.x);
     }
     this.threatCount = n;

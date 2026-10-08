@@ -41,6 +41,8 @@ export interface Avatar {
   reset(): void;
   setColors(current: Color, next: Color): void;
   update(f: AvatarFrame): void;
+  readonly aimReady: number; // 0 relaxed (cannon lowered) .. 1 combat
+  laserStart(out: Vector3): Vector3; // aim laser origin (muzzle, or the combat muzzle while relaxed)
   muzzleWorld(out: Vector3): Vector3;
   barrelWorld(out: Vector3): Vector3; // unit barrel axis
   shadowXZ(out: Vector3): Vector3; // blob shadow centre (hips)

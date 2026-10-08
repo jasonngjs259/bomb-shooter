@@ -108,8 +108,8 @@ Dev web builds expose `window.__arena = { engine, world }` for QA scripts.
   levels ramp gently: 60, 75, 90 bombs, then +12 per level.
 - A shot that bounces off at the border line shows **DEFLECT**.
 - Help: the ground danger ring and the radar show where bombs are close,
-  red arrows point at off-screen threats, and the aim laser highlights the
-  bombs that would pop.
+  red arrows point at off-screen threats (threats behind you sit on the lower
+  edge with a "!"), and the aim laser highlights the bombs that would pop.
 
 **Controls**
 
