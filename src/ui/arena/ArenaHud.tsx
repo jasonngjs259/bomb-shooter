@@ -26,8 +26,13 @@ export function useArenaHud(engine: ArenaEngine): HudState {
   const [s, setS] = useState(() => read(0));
   const ref = useRef(s);
   useEffect(() => {
+    // new game / next level: re-read at once (same render as the HUD
+    // re-appearing), so the old combo / level never flashes
     const offNew = engine.on("phaseChanged", ({ phase, previous }) => {
-      if (phase === "playing" && previous !== "playing") ref.current = { ...ref.current, total: 0 };
+      if (phase === "playing" && previous !== "playing") {
+        ref.current = read(0);
+        setS(ref.current);
+      }
     });
     const id = setInterval(() => {
       const n = read(ref.current.total);

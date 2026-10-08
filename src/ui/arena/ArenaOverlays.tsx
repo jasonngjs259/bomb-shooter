@@ -45,9 +45,14 @@ export const ThreatArrows = memo(function ThreatArrows({ world, engine, controls
             }}
             style={[styles.arrowHit, { left: t.x - 28, top: t.y - 28 }]}
           >
-            <View style={{ transform: [{ rotate: `${t.rot}deg` }, { scale }] }}>
-              <View style={styles.chevronOutline} />
-              <View style={styles.chevron} />
+            {/* slim arrow 18 x 32 (head + shaft, bright tip) so the pointing
+                end is unambiguous at any rotation; rotates about its centre */}
+            <View style={[styles.arrow, { transform: [{ rotate: `${t.rot}deg` }, { scale }] }]}>
+              <View style={styles.shaftOutline} />
+              <View style={styles.headOutline} />
+              <View style={styles.shaft} />
+              <View style={styles.head} />
+              <View style={styles.tip} />
             </View>
           </Pressable>
         );
@@ -126,16 +131,24 @@ export function LostCard({ onRetry, onClassic }: { onRetry: () => void; onClassi
 
 const styles = StyleSheet.create({
   arrowHit: { position: "absolute", width: 56, height: 56, alignItems: "center", justifyContent: "center" },
-  chevronOutline: {
-    position: "absolute", left: -15, top: -18, width: 0, height: 0,
-    borderLeftWidth: 15, borderRightWidth: 15, borderBottomWidth: 24,
+  arrow: { width: 18, height: 32 },
+  headOutline: {
+    position: "absolute", left: -2, top: -3, width: 0, height: 0,
+    borderLeftWidth: 11, borderRightWidth: 11, borderBottomWidth: 19,
     borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: palette.ink,
   },
-  chevron: {
-    position: "absolute", left: -12, top: -14, width: 0, height: 0,
-    borderLeftWidth: 12, borderRightWidth: 12, borderBottomWidth: 19,
+  head: {
+    position: "absolute", left: 0, top: 0, width: 0, height: 0,
+    borderLeftWidth: 9, borderRightWidth: 9, borderBottomWidth: 15,
     borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: palette.danger,
   },
+  tip: {
+    position: "absolute", left: 5, top: 1, width: 0, height: 0,
+    borderLeftWidth: 4, borderRightWidth: 4, borderBottomWidth: 7,
+    borderLeftColor: "transparent", borderRightColor: "transparent", borderBottomColor: "#FFE3E9",
+  },
+  shaftOutline: { position: "absolute", left: 4, top: 12, width: 10, height: 21, borderRadius: 2, backgroundColor: palette.ink },
+  shaft: { position: "absolute", left: 6, top: 13, width: 6, height: 18, borderRadius: 1, backgroundColor: palette.danger },
   bannerWrap: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "flex-start", paddingTop: "18%", pointerEvents: "none" },
   banner: { fontFamily: fonts.display, fontSize: 44, letterSpacing: 3, textAlign: "center" },
   click: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(7, 2, 15, 0.45)", cursor: "pointer" },

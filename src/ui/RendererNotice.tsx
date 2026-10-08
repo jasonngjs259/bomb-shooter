@@ -23,7 +23,11 @@ export function RendererNotice({ bottom }: { bottom: number }) {
           accessibilityRole="button"
           accessibilityLabel="Retry 3D graphics"
           hitSlop={8}
-          onPress={() => rendererStatus.retry3D()}
+          onPress={() => {
+            rendererStatus.retry3D();
+            // don't keep keyboard focus on the button: Space must fire again
+            if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          }}
           style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
         >
           <Text style={styles.retryText}>RETRY 3D</Text>

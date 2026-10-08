@@ -33,6 +33,7 @@ interface Options {
 }
 
 const EDGE_BAND = 0.15;
+const UI_PAD = 16; // margin around UI boxes that still counts as UI
 
 const onButton = (t: EventTarget | null) =>
   typeof HTMLElement !== "undefined" && t instanceof HTMLElement && t.closest('[role="button"],button,[role="switch"]') !== null;
@@ -123,7 +124,8 @@ export function useArenaDesktopControls(o: Options) {
       const r = root.getBoundingClientRect();
       const x = e.clientX - r.left;
       const y = e.clientY - r.top;
-      return !latest.current.uiBoxes.some((b) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h);
+      const pad = UI_PAD;
+      return !latest.current.uiBoxes.some((b) => x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad);
     };
     const onMove = (e: MouseEvent) => {
       const { controls, active } = latest.current;

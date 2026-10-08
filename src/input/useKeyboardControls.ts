@@ -10,9 +10,14 @@ import { GameEngine } from "../game/engine";
 
 const TURN_SPEED = 110; // degrees per second while a key is held
 
-// A focused button / switch handles its own Space / Enter.
+// A focused button / switch handles its own Space / Enter - except while a
+// shot can be played: then Space always fires and the stale focus (e.g. a
+// RETRY 3D button that failed) is dropped.
 const onControl = (t: EventTarget | null) =>
   typeof HTMLElement !== "undefined" && t instanceof HTMLElement && t.closest('[role="button"],button,[role="switch"]') !== null;
+const blurFocused = () => {
+  if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+};
 
 interface Options {
   engine: GameEngine;
@@ -70,7 +75,10 @@ export function useKeyboardControls({ engine, onStart, onAimKey }: Options) {
           setHeld("right", true);
           break;
         case "Space":
-          if (onControl(e.target)) return;
+          if (onControl(e.target)) {
+            if (!isPlaying()) return;
+            blurFocused();
+          }
           if (!e.repeat) {
             if (isPlaying()) engine.fire();
             else cbs.current.onStart();
