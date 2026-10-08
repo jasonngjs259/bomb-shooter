@@ -35,7 +35,17 @@ export function useAimInput({ engine, layout, screenToBoard, onStart, onPause, b
 
   const gesture = useMemo(() => {
     const toBoard = (x: number, y: number) => latest.current.screenToBoard(latest.current.layout, x, y);
-    let swapIntent = false;
+    // Tap target around the next-bomb socket: at least 30pt radius (60pt
+    // target) whatever the board scale, never smaller than 1.5 bomb radii.
+    const onNext = (p: Vec2) => {
+      if (engine.getPhase() !== "ready") return false;
+      const n = engine.getNextBomb();
+      const r = Math.max(engine.config.radius * 1.5, 30 / Math.max(0.01, latest.current.layout.scale));
+      return (p.x - n.x) ** 2 + (p.y - n.y) ** 2 <= r * r;
+    };
+    // The swap/fire decision is made on RELEASE from the release point, so it
+    // doesn't depend on callback order or on the press-point coordinates.
+    let pressOnNext = false;
 
     const pan = Gesture.Pan()
       .minDistance(0)
@@ -43,27 +53,28 @@ export function useAimInput({ engine, layout, screenToBoard, onStart, onPause, b
       .runOnJS(true) // keep callbacks on JS even if Reanimated gets installed later
       .onBegin((e) => {
         const p = toBoard(e.x, e.y);
-        swapIntent = engine.getPhase() === "ready" && engine.isPointOnNextBomb(p.x, p.y);
-        if (swapIntent) return;
+        pressOnNext = onNext(p);
+        if (pressOnNext) return;
         engine.aimAt(p.x, p.y);
         setPointerDown(true);
         setKeyboardAim(false);
       })
       .onUpdate((e) => {
-        if (swapIntent) return;
         const p = toBoard(e.x, e.y);
+        // Pressing on the socket: don't swing the aim toward it
+        if (onNext(p)) return;
+        pressOnNext = false;
         engine.aimAt(p.x, p.y);
+        setPointerDown(true);
+        setKeyboardAim(false);
       })
       .onEnd((e, success) => {
-        if (swapIntent) {
-          const p = toBoard(e.x, e.y);
-          if (engine.isPointOnNextBomb(p.x, p.y)) engine.swapBomb();
-        } else if (success) {
-          engine.fire();
-        }
+        const p = toBoard(e.x, e.y);
+        if (onNext(p) || (pressOnNext && engine.getPhase() === "ready")) engine.swapBomb();
+        else if (success) engine.fire();
+        pressOnNext = false;
       })
       .onFinalize(() => {
-        swapIntent = false;
         setPointerDown(false);
       });
 
@@ -73,7 +84,7 @@ export function useAimInput({ engine, layout, screenToBoard, onStart, onPause, b
       .onUpdate((e) => {
         const p = toBoard(e.x, e.y);
         // Don't swing the aim while the cursor rests on the swap button
-        if (!engine.isPointOnNextBomb(p.x, p.y)) engine.aimAt(p.x, p.y);
+        if (!onNext(p)) engine.aimAt(p.x, p.y);
         setKeyboardAim(false);
       })
       .onFinalize(() => setHovering(false));

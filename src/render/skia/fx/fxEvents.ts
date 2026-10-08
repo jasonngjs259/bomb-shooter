@@ -121,7 +121,6 @@ export function attachFxEvents(engine: GameEngineView, fx: FxSystem, getClock: (
       if (phase === "ready" && (previous === "title" || previous === "gameOver" || previous === "won")) {
         fx.reset();
         fx.startAt = fx.now;
-        if (previous === "title") fx.flashScreen(1, 0.3);
         fx.bursts.spawn(BURST_RING, m.width / 2, m.height - 46, 10, 120, 0.5, C.cyan, { width: 4 });
       } else if (phase === "ready") {
         fx.reloadAt = fx.now;

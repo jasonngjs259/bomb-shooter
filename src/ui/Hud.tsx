@@ -33,6 +33,37 @@ export interface HudData {
   nextColorIndex: number;
 }
 
+// Advance widths in em, measured from the Orbitron 800 TTF: "000,000" = 5.27,
+// digit = 0.84, comma = 0.24. Used to size the HUD numbers to their boxes.
+const SCORE_EM = 5.27;
+const numberEm = (text: string) => {
+  let em = 0;
+  for (const ch of text) em += ch === "," ? 0.24 : 0.84;
+  return em;
+};
+
+const BAR_PAD_L = 14;
+const BAR_PAD_R = 6;
+const BAR_GAP = 8;
+const PAUSE = 44;
+
+// Phone HUD bar layout from the bar width: fixed SLAM column, the rest split
+// 60/40 between SCORE and BEST, fonts sized so "000,000" always fits.
+export function hudBarMetrics(width: number, bestText: string) {
+  const compact = width < 340;
+  const pip = compact ? 8 : 10;
+  const pipGap = compact ? 4 : 6;
+  const slamW = 5 * pip + 4 * pipGap + 8; // + rotated-diamond overhang
+  const rest = width - BAR_PAD_L - BAR_PAD_R - 3 * BAR_GAP - slamW - PAUSE;
+  const scoreW = Math.floor(rest * 0.6);
+  const bestW = rest - scoreW;
+  const scoreSize = Math.max(10, Math.min(24, Math.floor((scoreW * 0.95) / SCORE_EM)));
+  const bestSize = Math.max(9, Math.min(16, Math.floor((bestW * 0.95) / numberEm(bestText))));
+  return { pip, pipGap, slamW, scoreW, bestW, scoreSize, bestSize };
+}
+
+const fitProps = Platform.OS === "web" ? {} : { adjustsFontSizeToFit: true, minimumFontScale: 0.6 };
+
 // Score with the 160ms bump + gold flash on change
 function ScoreValue({ score, size, reduced }: { score: number; size: number; reduced: boolean }) {
   const bump = useSharedValue(0);
@@ -45,14 +76,14 @@ function ScoreValue({ score, size, reduced }: { score: number; size: number; red
     color: interpolateColor(bump.value, [0, 1], [palette.textPrimary, palette.gold]),
   }));
   return (
-    <Animated.Text style={[styles.score, { fontSize: size, lineHeight: size * 1.15 }, style]} numberOfLines={1}>
+    <Animated.Text style={[styles.score, { fontSize: size, lineHeight: size * 1.15 }, style]} numberOfLines={1} {...fitProps}>
       {formatScore(score)}
     </Animated.Text>
   );
 }
 
 // Five diamonds that fill as shots are fired; all blink red on the last one
-export function CeilingPips({ shotsUntilCeiling, size = 10 }: { shotsUntilCeiling: number; size?: number }) {
+export function CeilingPips({ shotsUntilCeiling, size = 10, gap = 6 }: { shotsUntilCeiling: number; size?: number; gap?: number }) {
   const fired = CEILING_EVERY_SHOTS - shotsUntilCeiling;
   const last = shotsUntilCeiling === 1;
   const blink = useSharedValue(1);
@@ -65,7 +96,7 @@ export function CeilingPips({ shotsUntilCeiling, size = 10 }: { shotsUntilCeilin
   }, [last, blink]);
   const blinkStyle = useAnimatedStyle(() => ({ opacity: blink.value }));
   return (
-    <Animated.View style={[styles.pips, last && blinkStyle]} accessibilityLabel={`${shotsUntilCeiling} shots until the ceiling drops`}>
+    <Animated.View style={[styles.pips, { gap }, last && blinkStyle]} accessibilityLabel={`${shotsUntilCeiling} shots until the ceiling drops`}>
       {Array.from({ length: CEILING_EVERY_SHOTS }, (_, i) => (
         <View
           key={i}
@@ -90,19 +121,23 @@ function PauseGlyph() {
 }
 
 export function HudBar({ data, onPause, reduced, width }: { data: HudData; onPause: () => void; reduced: boolean; width: number }) {
+  const bestText = formatScore(Math.max(data.best, data.score), 1);
+  const m = hudBarMetrics(width, bestText);
   return (
     <View style={[styles.bar, { width }]}>
-      <View style={styles.col}>
-        <Text style={styles.label}>SCORE</Text>
-        <ScoreValue score={data.score} size={24} reduced={reduced} />
+      <View style={[styles.col, { width: m.scoreW }]}>
+        <Text style={styles.label} numberOfLines={1}>SCORE</Text>
+        <ScoreValue score={data.score} size={m.scoreSize} reduced={reduced} />
       </View>
-      <View style={[styles.col, styles.centre]}>
-        <Text style={styles.label}>SLAM</Text>
-        <CeilingPips shotsUntilCeiling={data.shotsUntilCeiling} />
+      <View style={[styles.col, styles.centre, { width: m.slamW }]}>
+        <Text style={styles.label} numberOfLines={1}>SLAM</Text>
+        <CeilingPips shotsUntilCeiling={data.shotsUntilCeiling} size={m.pip} gap={m.pipGap} />
       </View>
-      <View style={[styles.col, styles.right]}>
-        <Text style={styles.label}>BEST</Text>
-        <Text style={styles.best}>{formatScore(Math.max(data.best, data.score), 1)}</Text>
+      <View style={[styles.col, styles.right, { width: m.bestW }]}>
+        <Text style={styles.label} numberOfLines={1}>BEST</Text>
+        <Text style={[styles.best, { fontSize: m.bestSize }]} numberOfLines={1} {...fitProps}>
+          {bestText}
+        </Text>
       </View>
       <IconButton label="Pause" onPress={onPause}>
         <PauseGlyph />
@@ -187,17 +222,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "center",
-    paddingLeft: 16,
-    paddingRight: 6,
-    gap: 8,
+    paddingLeft: BAR_PAD_L,
+    paddingRight: BAR_PAD_R,
+    gap: BAR_GAP,
     backgroundColor: palette.panel,
     borderRadius: 18,
     borderWidth: 1.5,
     borderColor: palette.panelBorder,
   },
-  col: { flex: 1, justifyContent: "center" },
+  col: { justifyContent: "center" },
   centre: { alignItems: "center" },
-  right: { alignItems: "flex-end", paddingRight: 4 },
+  right: { alignItems: "flex-end" },
   label: { fontFamily: fonts.label, fontSize: 13, letterSpacing: 2, color: palette.textSecondary },
   score: { fontFamily: fonts.score, color: palette.textPrimary, fontVariant: ["tabular-nums"] },
   best: { fontFamily: fonts.score, fontSize: 16, color: palette.gold, fontVariant: ["tabular-nums"] },

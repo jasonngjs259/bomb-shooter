@@ -48,8 +48,12 @@ function useCountUp(target: number, delayMs: number, durationMs: number) {
   return value;
 }
 
+// When the end card becomes visible/usable (ms after gameOver / won). The
+// keyboard restart uses the same arming time.
+export const endCardDelay = (won: boolean, reduced: boolean) => (reduced ? 300 : won ? 1600 : 1500);
+
 export function GameOverOverlay({ won, score, best, isNewBest, maxCombo, reduced, onRetry, onMenu }: Props) {
-  const delay = reduced ? 300 : won ? 1600 : 1500;
+  const delay = endCardDelay(won, reduced);
   const backdrop = useSharedValue(0);
   const card = useSharedValue(0);
   const glitch = useSharedValue(0);

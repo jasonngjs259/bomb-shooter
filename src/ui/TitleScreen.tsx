@@ -3,7 +3,7 @@
 // and the settings button. Tap anywhere to skip the intro.
 
 import { useEffect, useState } from "react";
-import { LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutChangeEvent, Platform, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -88,10 +88,13 @@ export function TitleScreen({ best, exiting, reduced, onPlay, onSettings }: Prop
 
   return (
     <View style={styles.root} onLayout={onLayout}>
-      <Pressable
-        accessibilityLabel="Skip intro"
+      {/* Tap anywhere skips the intro. A plain responder View, not a
+          focusable button, so keyboard focus never lands on it and Enter
+          always reaches the global "start" key handler. */}
+      <View
         style={StyleSheet.absoluteFill}
-        onPress={() => setSkip((n) => n + 1)}
+        onStartShouldSetResponder={() => true}
+        onResponderRelease={() => setSkip((n) => n + 1)}
       />
       <TitleCanvas width={size.w} height={size.h} exiting={exiting} skip={skip} reduced={reduced} />
 
@@ -102,7 +105,14 @@ export function TitleScreen({ best, exiting, reduced, onPlay, onSettings }: Prop
       </Animated.View>
 
       <View style={[styles.bottom, { bottom: insets.bottom + (wide ? 90 : 56) }]}>
-        <Text style={[styles.tagline, wide && styles.taglineWide]}>MATCH 3 · CHAIN COMBOS · DON'T CROSS THE LINE</Text>
+        {size.w < 480 ? (
+          <View>
+            <Text style={styles.tagline}>MATCH 3 · CHAIN THE BLAST</Text>
+            <Text style={styles.tagline}>DON'T CROSS THE LINE</Text>
+          </View>
+        ) : (
+          <Text style={[styles.tagline, wide && styles.taglineWide]}>MATCH 3 · CHAIN THE BLAST · DON'T CROSS THE LINE</Text>
+        )}
         <Animated.View style={playStyle}>
           <Animated.View style={[styles.playGlow, glowStyle]} />
           <Button label="PLAY" size="lg" onPress={onPlay} style={styles.play} accessibilityHint="Starts a new game" />

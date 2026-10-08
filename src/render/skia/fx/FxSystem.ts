@@ -138,7 +138,7 @@ export class FxSystem {
 
   // One bomb exploding: flash, shockwave ring, particles, shell shards
   explode = (x: number, y: number, color: number, particles: number, shards: number) => {
-    this.bursts.spawn(BURST_FLASH, x, y, 0, 36, 0.12, highlightC(color));
+    this.bursts.spawn(BURST_FLASH, x, y, 0, 36, 0.12, highlightC(color), { alpha: 0.6 });
     this.bursts.spawn(BURST_RING, x, y, 10, 70, 0.32, glowC(color), { width: 6, alpha: 0.9 });
     this.burst(x, y, particles, {
       speedMin: 180, speedMax: 420, lifeMin: 0.35, lifeMax: 0.65, size: 3, drag: 0.92,

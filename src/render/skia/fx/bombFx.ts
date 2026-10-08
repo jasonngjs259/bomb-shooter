@@ -5,12 +5,16 @@
 //   FallingBombs - dropped bombs: jiggle 80ms, hop, gravity, spin, fade.
 // Both use fixed-capacity slot arrays.
 
-import { BlendMode, SkCanvas, Skia, SkPaint } from "@shopify/react-native-skia";
+import { BlendMode, SkCanvas, SkColor, Skia, SkPaint } from "@shopify/react-native-skia";
+import { bombColors } from "../palette";
+import { mixInto } from "../util";
 import { SpriteDrawer } from "../spriteDraw";
 import { BODY_R } from "../sprites";
 import { clamp01, easeOutQuad } from "../util";
 
 const PREFLASH = 0.05;
+const PREFLASH_ALPHA = 0.38; // peak tint (additive), toward the bomb's highlight
+const tint = new Float32Array(4) as SkColor;
 
 interface Pop {
   x: number;
@@ -87,7 +91,9 @@ export class PendingPops {
       const k = 1 + 0.25 * f;
       sprites.draw(canvas, p.color, layer, p.x, p.y, k);
       if (layer === 1 && f > 0) {
-        this.white.setAlphaf(0.85 * f);
+        // Tint toward the bomb's own highlight (slightly whitened), not pure white
+        const c = bombColors(p.color);
+        this.white.setColor(mixInto(tint, c.highlight, c.highlight, 0, PREFLASH_ALPHA * f));
         canvas.drawCircle(p.x, p.y, BODY_R * k, this.white);
       }
     }

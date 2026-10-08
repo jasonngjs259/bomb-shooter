@@ -12,6 +12,7 @@ import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { settingsStore } from "./src/storage/settings";
+import { hideBootSplash } from "./src/ui/bootSplash";
 import { GameScreen } from "./src/ui/GameScreen";
 import { Loader } from "./src/ui/Loader";
 import { colors } from "./src/ui/theme";
@@ -32,7 +33,9 @@ export default function App() {
   const ready = loaded || error !== null;
 
   useEffect(() => {
-    if (ready) SplashScreen.hideAsync().catch(() => undefined);
+    if (!ready) return;
+    SplashScreen.hideAsync().catch(() => undefined);
+    hideBootSplash(); // web pre-boot splash (public/index.html)
   }, [ready]);
 
   return (

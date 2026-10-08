@@ -17,15 +17,18 @@ import { activeRenderer, screenToBoard } from "../render";
 import { fitBoardInRect } from "../render/layout";
 import { useSettings } from "../storage/settings";
 import { FirstRunHint } from "./FirstRunHint";
-import { GameOverOverlay } from "./GameOverOverlay";
+import { endCardDelay, GameOverOverlay } from "./GameOverOverlay";
 import { HUD_BAR_HEIGHT, HudBar, SidePanels } from "./Hud";
 import { PauseMenu } from "./PauseMenu";
+import { useScreenFade } from "./ScreenFade";
+import { SwapButton } from "./SwapButton";
 import { TitleScreen } from "./TitleScreen";
-import { colors } from "./theme";
+import { colors, palette } from "./theme";
 import { useBestScore } from "./useBestScore";
 
 const NO_INSETS = { top: 0, right: 0, bottom: 0, left: 0 };
 const TITLE_EXIT_MS = 560; // fuse burn + detonation + white wipe
+const REDUCED_EXIT_MS = 180; // dark cross-fade instead
 
 export function GameScreen() {
   const renderer = activeRenderer;
@@ -41,6 +44,10 @@ export function GameScreen() {
   const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef(menu);
   menuRef.current = menu;
+  const reducedRef = useRef(reducedMotion);
+  reducedRef.current = reducedMotion;
+  const restartArmedAt = useRef(0); // keyboard restart waits for the end card
+  const fade = useScreenFade();
 
   useEffect(() => attachHaptics(engine), [engine]);
 
@@ -50,6 +57,9 @@ export function GameScreen() {
       engine.on("pop", ({ combo }) => setMaxCombo((m) => Math.max(m, combo))),
       engine.on("phaseChanged", ({ phase, previous }) => {
         if (phase === "ready" && previous !== "shooting" && previous !== "resolving") setMaxCombo(0);
+        if (phase === "gameOver" || phase === "won") {
+          restartArmedAt.current = Date.now() + endCardDelay(phase === "won", reducedRef.current);
+        }
       }),
     ];
     return () => offs.forEach((off) => off());
@@ -96,23 +106,30 @@ export function GameScreen() {
   // Start / restart. From the title, play the detonation first.
   const startGame = useCallback(() => {
     if (menuRef.current !== "none") return;
-    if (engine.getPhase() !== "title") {
+    const phase = engine.getPhase();
+    if (phase !== "title") {
+      // Same arming as the end card's buttons (Space can't skip the finale)
+      if ((phase === "gameOver" || phase === "won") && Date.now() < restartArmedAt.current) return;
       clock.reset();
       engine.newGame();
       return;
     }
     if (exitTimer.current) return;
     setTitleExiting(true);
+    if (reducedMotion) fade.cover(palette.bgTop, REDUCED_EXIT_MS);
     exitTimer.current = setTimeout(
       () => {
         exitTimer.current = null;
         clock.reset();
         engine.newGame();
         setTitleExiting(false);
+        // Reveal the board from the detonation's white wipe (or a dark fade)
+        if (reducedMotion) fade.reveal(palette.bgTop, 400);
+        else fade.reveal("#FFFFFF", 300);
       },
-      reducedMotion ? 150 : TITLE_EXIT_MS
+      reducedMotion ? REDUCED_EXIT_MS : TITLE_EXIT_MS
     );
-  }, [engine, clock, reducedMotion]);
+  }, [engine, clock, reducedMotion, fade]);
 
   const togglePause = useCallback(() => {
     setMenu((m) => (m === "pause" ? "none" : m === "none" ? "pause" : m));
@@ -168,6 +185,7 @@ export function GameScreen() {
         <SidePanels data={hudData} layout={layout} onPause={togglePause} onSwap={() => engine.swapBomb()} reduced={reducedMotion} />
       )}
 
+      {playing && <SwapButton engine={engine} layout={layout} onSwap={() => engine.swapBomb()} />}
       {playing && <FirstRunHint engine={engine} phase={phase} layout={layout} reduced={reducedMotion} />}
 
       {phase === "title" && (
@@ -200,6 +218,7 @@ export function GameScreen() {
           onMenu={menu === "pause" ? toMenu : undefined}
         />
       )}
+      {fade.node}
     </View>
   );
 }
