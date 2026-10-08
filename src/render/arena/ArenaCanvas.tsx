@@ -27,8 +27,13 @@ function ArenaScene({ world }: { world: ArenaWorld }) {
 
   useFrame((state, delta) => {
     const camera = state.camera as PerspectiveCamera;
+    const info = state.gl.info;
+    // count both passes (world + radar) for the QA draw-call stat
+    info.autoReset = false;
+    info.reset();
     world.frame(camera, delta, state.viewport.dpr);
     renderArenaFrame(state.gl, state.scene, camera, world.radar, world.radarRect, state.size);
+    world.stats.draws = info.render.calls;
   }, 1);
 
   return <primitive object={world.root} />;

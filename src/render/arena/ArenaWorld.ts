@@ -6,6 +6,14 @@
 // The player is an Avatar: the animated character once its GLB is parsed
 // (the intro sweep covers the load), the primitive stickman until then and
 // for good if the model can't load or animate (the game never breaks).
+// Fun pass: the engine owns slow-mo / hit-stop, so the sim is stepped as
+// update(dt * clock * engine.getTimeScale()) and the avatar + FX run on that
+// scaled time (the camera stays on real time and zooms during slow-mo).
+// Special bombs, pickups, rollers, the boss and the fun FX come from
+// BombDecor / ArenaSpecials / ArenaFunFx; fever + freeze drive the ground,
+// sky, border and vignette uniforms (0 extra draws); the radar and threat
+// arrows know rollers and armed ticking bombs. setSkin() takes the Hangar
+// skin; `debug` + `stats` are for QA (window.__arena.world).
 
 import { AmbientLight, Color, DirectionalLight, Group, PerspectiveCamera, PointLight, Vector3 } from "three";
 import { ArenaControls } from "../../arena/ArenaControls";
@@ -20,7 +28,7 @@ import { Particles } from "../three/fx/Particles";
 import { bombGlow, colorAt, HEX } from "../three/palette";
 import { makeGlowTexture, makeGlyphAtlas, makeRingTexture } from "../three/textures";
 import { AimLaser, segmentAEnd } from "./AimLaser";
-import { ArenaBombs, K } from "./ArenaBombs";
+import { ArenaBombs, K, POWER_COLOR } from "./ArenaBombs";
 import { ArenaFx } from "./ArenaFx";
 import { Billboards } from "./Billboards";
 import { ChaseCamera, INTRO_TIME } from "./ChaseCamera";
@@ -32,15 +40,32 @@ import type { Avatar, AvatarFrame } from "./avatar";
 import { Character } from "./character/Character";
 import { parseCharacter } from "./character/loadCharacter";
 import { Stickman } from "./Stickman";
+import { ArenaFunFx } from "./ArenaFunFx";
+import { ArenaSpecials, rainbowAt } from "./ArenaSpecials";
+import { AtlasSprites } from "./AtlasSprites";
+import { BombDecor } from "./BombDecor";
+import { countDraws } from "./drawStats";
+import { makeFunAtlas } from "./funAtlas";
+import { ArenaSkin, DEFAULT_SKIN, ResolvedSkin, resolveSkin } from "./skin";
+import type { PickupKind, PowerKind } from "../../game/arena/funTypes";
 
-export interface Threat { x: number; y: number; rot: number; d: number; angle: number; behind: boolean }
+// kind: "wall" = a danger sector run, "roller" = a rolling roller, "tick" =
+// an armed ticking bomb with <= 8 s left (the UI can show a clock glyph)
+export type ThreatKind = "wall" | "roller" | "tick";
+export interface Threat { x: number; y: number; rot: number; d: number; angle: number; behind: boolean; kind: ThreatKind }
 export interface RadarRect { x: number; y: number; size: number } // css px, top-left origin
 export interface Box { x: number; y: number; w: number; h: number } // css px
 const BEHIND = (100 * Math.PI) / 180; // threat arrows: behind the player beyond this
 const ARROW_GAP = 56; // px between behind-arrows on the bottom band
-const ROLL_ROOM = 48; // px kept free left of the FIRE cluster (planned ROLL button)
+// Phone ROLL button (fun spec 6): Ø 60 pt at (-172, -150) from the
+// bottom-right safe corner, hitSlop 10. Arrows keep ROLL_ROOM px clear of
+// its touch area (it is added to the avoid boxes on the touch layout).
+export const ROLL_BUTTON = { right: 172, bottom: 150, d: 60, hitSlop: 10 };
+const ROLL_ROOM = 8;
+const TICK_ARROW_AT = 8; // s left on an armed ticking bomb
 
 export type CharacterSource = () => Promise<ArrayBuffer>;
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 export type AvatarKind = "loading" | "character" | "stickman";
 
 export class ArenaWorld {
@@ -52,7 +77,7 @@ export class ArenaWorld {
   avatar: Avatar = this.stick;
   avatarKind: AvatarKind = "stickman";
   character: Character | null = null;
-  readonly threats: Threat[] = [0, 1, 2, 3].map(() => ({ x: 0, y: 0, rot: 0, d: 0, angle: 0, behind: false }));
+  readonly threats: Threat[] = [0, 1, 2, 3].map(() => ({ x: 0, y: 0, rot: 0, d: 0, angle: 0, behind: false, kind: "wall" as ThreatKind }));
   threatCount = 0;
   radarRect: RadarRect | null = null;
   // Threat arrows sit on the ellipse inscribed in arrowRect (the playfield
@@ -65,14 +90,31 @@ export class ArenaWorld {
   playing = false; // controls + aim guide live (intro done, not paused/ended)
   private readonly fxSpace = new Group();
   private readonly ground: Ground;
-  private readonly sky = new Sky();
+  private readonly sky: Sky;
   private readonly bombs: ArenaBombs;
+  private readonly sprites: AtlasSprites;
+  private readonly specials: ArenaSpecials;
+  readonly funFx: ArenaFunFx;
+  private skin: ResolvedSkin = resolveSkin(DEFAULT_SKIN);
+  private readonly feverColor = new Color();
+  private readonly headV = new Vector3();
+  private preview: number[] = [];
+  private previewT = 0;
+  private previewYaw = 99;
+  private previewKind: PowerKind | null = null;
+  private readonly rollBox: Box = { x: 0, y: 0, w: 0, h: 0 };
+  private rollBoxOn = false;
+  // QA: draw calls of the last frame (set by ArenaCanvas from renderer.info,
+  // or counted from the scene graph headlessly) and a rolling fps
+  readonly stats = { draws: 0, sceneDraws: 0, fps: 0, frameMs: 0 };
+  private fpsN = 0;
+  private fpsT = 0;
   private readonly laser = new AimLaser();
   private readonly particles = new Particles(400);
   private readonly debris = new Debris(48);
   private readonly glow: Billboards;
   private readonly decals: GroundQuads;
-  private readonly textures = [makeGlowTexture(), makeRingTexture(), makeGlyphAtlas()];
+  private readonly textures = [makeGlowTexture(), makeRingTexture(), makeGlyphAtlas(), makeFunAtlas()];
   private readonly muzzleColor = new Color(HEX.cyan);
   private readonly nextColor = new Color(HEX.cyan);
   private readonly aimPt = new Vector3();
@@ -89,7 +131,7 @@ export class ArenaWorld {
   private introFired = false;
   private readonly frameIn: AvatarFrame = {
     dt: 0, t: 0, x: 0, z: 0, yaw: 0, vx: 0, vz: 0, ax: 0, az: 0, maxSpeed: 3, yawRate: 0, aim: this.aimPt, idleTime: 0,
-    danger: 0, rearDanger: 0, rearAngle: 0, low: false, still: false,
+    danger: 0, rearDanger: 0, rearAngle: 0, low: false, still: false, fever: false, rolling: false, rollDirX: 1, rollDirZ: 0, stun: 0,
   };
 
   constructor(
@@ -97,12 +139,15 @@ export class ArenaWorld {
     character?: CharacterSource,
   ) {
     const r = engine.getConfig().arenaRadius;
-    const [glowTex, ringTex, glyphTex] = this.textures;
+    const [glowTex, ringTex, glyphTex, funTex] = this.textures;
     this.ground = new Ground(r);
+    this.sky = new Sky(this.ground.vig);
     this.radar = new Radar(r);
     this.glow = new Billboards(900, glowTex, 10);
     this.decals = new GroundQuads(160, ringTex, true, 4);
-    this.bombs = new ArenaBombs(glyphTex, glowTex, this.glow);
+    this.sprites = new AtlasSprites(64, funTex);
+    this.bombs = new ArenaBombs(glyphTex, glowTex, this.glow, new BombDecor(this.sprites));
+    this.specials = new ArenaSpecials(this.sprites, this.glow);
     this.fxSpace.scale.setScalar(K);
     this.fxSpace.add(this.bombs.batch.bombs, this.bombs.batch.hardware, this.bombs.batch.glyphs, this.glow.mesh, this.particles.points, this.debris.mesh);
     const key = new DirectionalLight("#ffffff", 3.1);
@@ -112,8 +157,11 @@ export class ArenaWorld {
     this.root.add(
       new AmbientLight("#3B2A6B", 1.4), key, key.target, rim, this.sky.mesh, this.ground.group, this.stick.group,
       this.fxSpace, this.bombs.shadows.mesh, this.bombs.shells, this.decals.mesh, this.laser.group,
+      this.bombs.decor.cages, this.bombs.decor.treads, this.bombs.decor.dials, this.specials.group, this.sprites.mesh,
     );
     this.fx = new ArenaFx(engine, this.particles, this.debris, this.glow, this.decals, this.bombs, () => this.avatar, this.chase, clock, bus,
+      (x, y, z) => this.project(x, y, z));
+    this.funFx = new ArenaFunFx(engine, this.fx, this.specials, this.sprites, this.bombs, () => this.avatar, this.chase, bus,
       (x, y, z) => this.project(x, y, z));
     if (character) this.loadCharacter(character);
   }
@@ -126,6 +174,7 @@ export class ArenaWorld {
       .then(parseCharacter)
       .then((asset) => {
         const c = new Character(asset);
+        c.setSkin(this.skin);
         this.useAvatar(c);
         this.character = c;
         this.avatarKind = "character";
@@ -160,6 +209,37 @@ export class ArenaWorld {
     c?.dispose();
   }
 
+  // Hangar skin, plain hex colours: { trim, cannon, plates, prism? }. Danger
+  // red still overrides the trim (information). Applies to the character now
+  // or once it has loaded.
+  setSkin(skin: { trim: string; cannon: string; plates: string; prism?: boolean }) {
+    this.skin = resolveSkin(skin as ArenaSkin);
+    this.character?.setSkin(this.skin);
+    this.specials.trailColor.copy(this.skin.trim);
+  }
+
+  // QA hooks (window.__arena.world.debug): thin wrappers over the engine's
+  // dev commands, so a console session can stage every mechanic.
+  readonly debug = {
+    spawnPickup: (kind: PickupKind, x?: number, z?: number) => {
+      const s = this.engine.getShooter();
+      const a = s.yaw;
+      return this.engine.debugSpawnPickup(kind, x ?? s.x + Math.cos(a) * 2.2, z ?? s.z + Math.sin(a) * 2.2);
+    },
+    setFever: (v: number) => this.engine.debugSetFever(v),
+    setBossHp: (hp: number) => this.engine.debugSetBossHp(hp),
+    launchRoller: (id?: number, speedScale = 1) => this.engine.debugLaunchRoller(id, speedScale),
+    armTicking: (id?: number) => this.engine.debugArmTicking(id),
+    // start a level now (skips the intro sweep), e.g. level(3) for the boss
+    level: (level: number) => {
+      this.engine.newGame({ level });
+      this.restart();
+      this.engine.setCreepPaused(false);
+    },
+    roll: (x = 0, z = 0) => this.engine.roll(x, z),
+    stats: () => ({ ...this.stats }),
+  };
+
   setSize(w: number, h: number) {
     this.W = Math.max(1, w);
     this.H = Math.max(1, h);
@@ -183,12 +263,16 @@ export class ArenaWorld {
 
   restart() {
     this.fx.reset();
+    this.funFx.reset();
+    this.specials.reset();
+    this.bombs.reset();
     this.stick.reset();
     this.character?.reset();
     this.chase.chase();
   }
 
   frame(camera: PerspectiveCamera, dtReal: number, dpr: number) {
+    const t0 = now();
     this.cam = camera;
     const dt = Math.min(dtReal, 1 / 20);
     this.realT += dt;
@@ -199,10 +283,13 @@ export class ArenaWorld {
     if (this.quality !== settings.quality) {
       this.quality = settings.quality;
       this.bombs.setQuality(!low);
+      this.bombs.decor.digitRate = low ? 15 : 60;
     }
     this.fx.opts = { particles: (low ? 0.5 : 1) * (still ? 0.4 : 1), debris: !low && !still, shake: !still, still };
     this.chase.still = still;
-    const simDt = dt * this.clock.scale();
+    // engine slow-mo / hit-stop: the scale it reports now, applied to this step
+    const timeScale = e.getTimeScale();
+    const simDt = dt * this.clock.scale() * timeScale;
 
     this.controls.enabled = this.playing && simDt > 0;
     this.controls.apply(e, this.chase.yaw, dt);
@@ -210,6 +297,11 @@ export class ArenaWorld {
 
     const s = e.getShooter();
     const cfg = e.getConfig();
+    const roll = e.getRoll();
+    const fever = e.getFever();
+    const power = e.getPowerSlot();
+    const stun = e.getStun();
+    const rolling = roll.state === "rolling";
     const yawRate = dt > 0 ? angleDiff(this.lastYaw, s.yaw) / dt : 0;
     this.lastYaw = s.yaw;
     const sectors = e.getDangerByAngle(16);
@@ -229,7 +321,11 @@ export class ArenaWorld {
     f.vx = s.vx; f.vz = s.vz; f.ax = s.ax; f.az = s.az; f.maxSpeed = cfg.moveSpeed; f.yawRate = simDt > 0 ? yawRate : 0;
     f.idleTime = this.controls.idleTime; f.danger = e.getDangerLevel(); f.rearDanger = rear; f.rearAngle = rearAngle;
     f.low = low; f.still = still;
-    this.muzzleColor.lerp(colorAt(bombGlow, e.getCurrentBomb()), 1 - Math.exp(-dt * 20));
+    f.fever = fever.active; f.rolling = rolling; f.rollDirX = roll.dirX; f.rollDirZ = roll.dirZ; f.stun = stun;
+    // muzzle glow: the loaded POWER's colour, rainbow in fever, else the current bomb
+    rainbowAt(this.realT, this.feverColor, 1.2);
+    const want0 = power === "rainbow" || (fever.active && !power) ? this.feverColor : power ? POWER_COLOR[power] : colorAt(bombGlow, e.getCurrentBomb());
+    this.muzzleColor.lerp(want0, 1 - Math.exp(-dt * (fever.active || power === "rainbow" ? 60 : 20)));
     this.nextColor.lerp(colorAt(bombGlow, e.getNextBomb()), 1 - Math.exp(-dt * 20));
     try {
       this.avatar.update(f);
@@ -243,6 +339,10 @@ export class ArenaWorld {
     // camera (after the character's aim pass, same dt)
     this.chase.mouse = this.controls.yawSource === "mouse";
     this.chase.fwdSpeed = s.vx * Math.cos(this.chase.yaw) + s.vz * Math.sin(this.chase.yaw);
+    this.chase.rolling = rolling;
+    this.chase.timeScale = timeScale * (this.clock.scale() > 0 || this.clock.paused ? 1 : 0.4);
+    const boss = e.getBoss();
+    this.chase.bossAt = boss ? { x: boss.x, z: boss.z } : null;
     this.chase.update(camera, dt, s.x, s.z, s.yaw, this.W / this.H, e.getDangerLevel(), rear, this.fx.shakeX, this.fx.shakeY);
     if (!this.introFired && this.chase.introDone && this.chase.introT >= INTRO_TIME) {
       this.introFired = true;
@@ -251,36 +351,107 @@ export class ArenaWorld {
 
     this.glow.begin();
     this.decals.begin();
-    this.fx.update(simDt);
-    const want = this.playing && e.getPhase() === "playing" && !e.getShot() && s.cooldown <= 0 ? 1 : 0;
+    this.sprites.begin();
+    this.fx.update(simDt, dt);
+    this.funFx.update(simDt, dt, still, low);
+    const shotOk = fever.active ? true : !e.getShot() && s.cooldown <= 0;
+    const want = this.playing && e.getPhase() === "playing" && shotOk && !rolling ? 1 : 0;
     this.aimAlpha = want ? Math.min(1, this.aimAlpha + dt / 0.12) : 0;
-    this.bombs.frame(e, this.avatar, { t: this.realT, still, low, colourAssist: settings.colourAssist, showPop: this.aimAlpha > 0.5 });
+    // POWER ghost: the ids the loaded power would remove along this aim (throttled)
+    this.previewT += dt;
+    if (!power || this.aimAlpha <= 0.5) this.preview.length = 0;
+    else if (power !== this.previewKind || (this.previewT >= 0.1 && Math.abs(angleDiff(this.previewYaw, s.yaw)) > 0.002)) {
+      this.preview = e.previewPower(power, s.yaw);
+      this.previewT = 0;
+      this.previewYaw = s.yaw;
+    }
+    this.previewKind = power;
+    const ice = this.funFx.ice;
+    this.bombs.frame(e, this.avatar, {
+      t: this.realT, still, low, colourAssist: settings.colourAssist, showPop: this.aimAlpha > 0.5, ice, power, preview: this.preview,
+      rainbow: this.feverColor,
+    }, simDt);
+    this.avatar.headWorld(this.headV);
+    this.specials.frame(e, {
+      t: this.realT, dt: simDt, low, still, camX: camera.position.x, camY: camera.position.y, camZ: camera.position.z, ice, head: this.headV, stun,
+    });
     this.glow.end();
     this.decals.end();
+    this.sprites.end();
     // relaxed stance: the beam starts where the combat muzzle would be and
     // fades in over its first metre (it no longer matches the lowered gun)
     const relaxed = 1 - this.avatar.aimReady;
     this.laser.update(ray, this.avatar.laserStart(this.mv), s.yaw, this.muzzleColor, this.realT, this.aimAlpha, still, this.laserWide, relaxed * 1.2);
 
+    const fk = this.funFx.fever;
     this.ground.update({
       time: this.realT, danger: e.getDangerLevel(), sectors, playerX: s.x, playerZ: s.z, low,
       pulse: this.fx.gridPulse, flash: this.fx.borderFlash, surge: this.fx.surge, chase: this.fx.chase,
+      ice, fever: fk, feverColor: this.feverColor, red: this.funFx.lurchFlash,
     });
+    this.vignette(dpr, fk, ice, still);
     this.sky.update(this.realT, camera.position.x, camera.position.y, camera.position.z, low);
     const hfov = hFovFor(camera.fov, this.W / this.H);
     this.radar.update(e, hfov, this.radarRect?.size ?? 140, dpr, dt);
     this.particles.setProjection((K * this.H * dpr) / (2 * Math.tan((camera.fov * Math.PI) / 360)), 1);
     this.updateThreats(camera, sectors);
+    // QA stats: rolling fps (real frames), JS ms of this frame, scene draws
+    this.stats.frameMs = now() - t0;
+    this.fpsN++;
+    this.fpsT += dtReal;
+    if (this.fpsT >= 0.5) {
+      this.stats.fps = this.fpsN / this.fpsT;
+      this.fpsN = 0;
+      this.fpsT = 0;
+      this.stats.sceneDraws = countDraws(this.root) + (this.radarRect ? countDraws(this.radar.scene) : 0);
+    }
   }
 
-  // Off-screen threat arrows: merged runs of sectors with danger >= 0.5
-  // whose centre is outside the view; max 4, strongest first.
+  // Screen-edge glow (ground + sky shaders, 0 draws): fever magenta -> gold
+  // pulsing on the 112 BPM beat, freeze frost, red on a lurch / hit.
+  private vignette(dpr: number, fever: number, ice: number, still: boolean) {
+    const v = this.ground.vig;
+    v.uRes.value.set(this.W * dpr, this.H * dpr);
+    const beat = still ? 0.5 : 0.5 + 0.5 * Math.cos(this.realT * Math.PI * 2 * 1.87);
+    const kF = fever * (0.4 + 0.2 * beat) + this.funFx.feverFlash * 0.6;
+    const kI = ice * 0.45;
+    const kR = this.funFx.lurchFlash * 0.7;
+    const k = kF + kI + kR;
+    v.uVig.value = Math.min(1, k);
+    if (k <= 0.001) return;
+    const a = v.uVigA.value, b = v.uVigB.value;
+    // bottom magenta / top gold (fever), frost, red
+    a.set((kF * 1.0 + kI * 0.81 + kR * 1.0) / k, (kF * 0.24 + kI * 0.96 + kR * 0.18) / k, (kF * 0.8 + kI * 1.0 + kR * 0.33) / k);
+    b.set((kF * 1.0 + kI * 0.81 + kR * 1.0) / k, (kF * 0.82 + kI * 0.96 + kR * 0.18) / k, (kF * 0.25 + kI * 1.0 + kR * 0.33) / k);
+  }
+
+  // Off-screen threat arrows, max 4: rolling rollers first (closest first,
+  // they hit the player), then armed ticking bombs with <= 8 s left, then the
+  // merged runs of sectors with danger >= 0.5 (strongest first).
+  private readonly cands: { px: number; pz: number; d: number; kind: ThreatKind }[] = Array.from({ length: 24 }, () => ({ px: 0, pz: 0, d: 0, kind: "wall" as ThreatKind }));
+  private readonly clusters: { d: number; first: number; n: number }[] = Array.from({ length: 16 }, () => ({ d: 0, first: 0, n: 0 }));
   private updateThreats(camera: PerspectiveCamera, sectors: readonly number[]) {
-    const s = this.engine.getShooter();
-    // walk the ring starting after a calm sector so a run never wraps
+    const e = this.engine;
+    const s = e.getShooter();
+    let nc = 0;
+    const cand = (px: number, pz: number, d: number, kind: ThreatKind) => {
+      if (nc >= this.cands.length) return;
+      const c = this.cands[nc++];
+      c.px = px; c.pz = pz; c.d = d; c.kind = kind;
+    };
+    for (const r of e.getRollers()) {
+      const dist = Math.hypot(r.x - s.x, r.z - s.z);
+      cand(r.x, r.z, 2 + Math.max(0, 1 - dist / 12), "roller"); // d > 1 sorts first; clamped below
+    }
+    for (const b of e.getBombs()) {
+      if (b.kind === "ticking" && b.armed && b.state === "idle" && b.timer !== null && b.timer <= TICK_ARROW_AT) {
+        cand(b.x, b.z, 1.5 + (1 - b.timer / TICK_ARROW_AT) * 0.4, "tick");
+      }
+    }
+    // wall: walk the ring starting after a calm sector so a run never wraps
     let start = sectors.findIndex((d) => d < 0.5);
     if (start < 0) start = 0;
-    const clusters: { d: number; first: number; n: number; a: number }[] = [];
+    let ncl = 0;
     let open = false;
     for (let k = 1; k <= 16; k++) {
       const i = (start + k) % 16;
@@ -288,27 +459,45 @@ export class ArenaWorld {
         open = false;
         continue;
       }
-      const last = clusters[clusters.length - 1];
+      const last = ncl > 0 ? this.clusters[ncl - 1] : null;
       if (open && last) {
         last.d = Math.max(last.d, sectors[i]);
         last.n++;
       } else {
-        clusters.push({ d: sectors[i], first: i, n: 1, a: 0 });
+        const c = this.clusters[ncl++];
+        c.d = sectors[i]; c.first = i; c.n = 1;
         open = true;
       }
     }
-    for (const c of clusters) c.a = sectorCentre(c.first) + ((c.n - 1) / 2) * ((Math.PI * 2) / 16);
-    clusters.sort((p, q) => q.d - p.d);
+    for (let i = 0; i < ncl; i++) {
+      const c = this.clusters[i];
+      const a = sectorCentre(c.first) + ((c.n - 1) / 2) * ((Math.PI * 2) / 16);
+      cand(Math.cos(a) * 6.5, Math.sin(a) * 6.5, c.d, "wall");
+    }
+    const list = this.cands;
+    // insertion sort by d (descending) over the used prefix (no allocation)
+    for (let i = 1; i < nc; i++) {
+      const c = list[i];
+      let j = i - 1;
+      while (j >= 0 && list[j].d < c.d) {
+        list[j + 1] = list[j];
+        j--;
+      }
+      list[j + 1] = c;
+    }
     let n = 0;
     const r = this.arrowRect ?? { x: 0, y: 0, w: this.W, h: this.H };
     const cx = r.x + r.w / 2;
     const cy = r.y + r.h / 2;
+    this.updateRollBox(r);
     camera.updateMatrixWorld();
-    for (const c of clusters) {
+    for (let ci = 0; ci < nc; ci++) {
       if (n >= 4) break;
-      const px = Math.cos(c.a) * 6.5;
-      const pz = Math.sin(c.a) * 6.5;
-      this.pv.set(px, 0.3, pz).project(camera);
+      const c = list[ci];
+      const px = c.px;
+      const pz = c.pz;
+      const py = c.kind === "wall" ? 0.3 : 0.45;
+      this.pv.set(px, py, pz).project(camera);
       // "behind" = more than 100 deg off the player's facing (not the camera
       // plane, which the pulled-back danger camera can put in front of it)
       const rel = angleDiff(s.yaw, Math.atan2(pz - s.z, px - s.x));
@@ -321,7 +510,7 @@ export class ArenaWorld {
       // clockwise): from camera space for threats in front, from the ground
       // heading for threats behind (down = behind), so those sit on the
       // lower ring and never among the bombs on the horizon
-      this.mv.set(px, 0.3, pz).applyMatrix4(camera.matrixWorldInverse);
+      this.mv.set(px, py, pz).applyMatrix4(camera.matrixWorldInverse);
       let ang = Math.atan2(this.mv.x, this.mv.y);
       if (behind || this.pv.z > 1 || Math.hypot(this.mv.x, this.mv.y) < 1e-4) ang = angleDiff(this.chase.yaw, Math.atan2(pz - s.z, px - s.x));
       if (behind) ang = Math.sign(ang || 1) * Math.max(Math.abs(ang), BEHIND); // always the lower edge
@@ -335,7 +524,9 @@ export class ArenaWorld {
         // sides: never up in the horizon band among the bombs; out of a
         // control box sideways, never upwards
         t.y = Math.max(t.y, cy);
-        for (const b of this.arrowAvoid) {
+        for (let bi = -1; bi < this.arrowAvoid.length; bi++) {
+          const b = bi < 0 ? (this.rollBoxOn ? this.rollBox : null) : this.arrowAvoid[bi];
+          if (!b) continue;
           if (t.x > b.x - 28 && t.x < b.x + b.w + 28 && t.y > b.y - 28 && t.y < b.y + b.h + 28) {
             t.x = b.x + b.w / 2 > cx ? b.x - 30 : b.x + b.w + 30;
           }
@@ -344,23 +535,44 @@ export class ArenaWorld {
       // point outward: from the arrow towards the threat's screen position
       const rot = behind || this.pv.z > 1 ? ang : Math.atan2(sx - t.x, -(sy - t.y));
       t.rot = (rot * 180) / Math.PI;
-      t.d = c.d;
+      t.d = Math.min(1, c.kind === "wall" ? c.d : c.kind === "roller" ? 0.9 + (c.d - 2) * 0.1 : 0.85);
       t.behind = behind;
+      t.kind = c.kind;
       t.angle = Math.atan2(pz - s.z, px - s.x);
     }
     this.threatCount = n;
     this.spreadBehind(r, cx);
   }
 
+  // Touch layout (a control box anchored at the bottom-right corner): the
+  // ROLL button's touch area, so arrows keep clear of it.
+  private updateRollBox(r: Box) {
+    this.rollBoxOn = false;
+    const right = r.x + r.w + 16;
+    const bottom = r.y + r.h + 16;
+    for (const b of this.arrowAvoid) {
+      if (Math.abs(b.x + b.w - right) < 3 && Math.abs(b.y + b.h - bottom) < 3) {
+        const half = ROLL_BUTTON.d / 2 + ROLL_BUTTON.hitSlop;
+        this.rollBox.x = right - ROLL_BUTTON.right - half;
+        this.rollBox.y = bottom - ROLL_BUTTON.bottom - half;
+        this.rollBox.w = this.rollBox.h = half * 2;
+        this.rollBoxOn = true;
+        return;
+      }
+    }
+  }
+
   // Behind-arrows share the bottom band: keep them in the free gap between
-  // the control clusters (and the room left for a ROLL button) and at least
-  // ARROW_GAP apart, in their left-to-right order.
+  // the control clusters (and ROLL_ROOM clear of the ROLL button) and at
+  // least ARROW_GAP apart, in their left-to-right order.
   private spreadBehind(r: Box, cx: number) {
     const band = r.y + r.h - 28;
     let lo = r.x + 28;
     let hi = r.x + r.w - 28;
-    for (const b of this.arrowAvoid) {
-      if (band < b.y - 28 || band > b.y + b.h + 28) continue;
+    for (let bi = -1; bi < this.arrowAvoid.length; bi++) {
+      const b = bi < 0 ? (this.rollBoxOn ? this.rollBox : null) : this.arrowAvoid[bi];
+      if (!b) continue;
+      if (band < b.y - 28 - ROLL_ROOM || band > b.y + b.h + 28 + ROLL_ROOM) continue;
       if (b.x + b.w / 2 < cx) lo = Math.max(lo, b.x + b.w + 30);
       else hi = Math.min(hi, b.x - 30 - ROLL_ROOM);
     }
@@ -379,6 +591,9 @@ export class ArenaWorld {
 
   dispose() {
     this.fx.dispose();
+    this.funFx.dispose();
+    this.specials.dispose();
+    this.sprites.dispose();
     this.ground.dispose();
     this.sky.dispose();
     this.bombs.dispose();
