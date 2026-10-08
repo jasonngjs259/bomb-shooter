@@ -4,7 +4,7 @@
 //   fever; pity after 25 s without a drop (next n >= 4 drops); L1 teach (first
 //   n >= 4 drops a Rainbow). Limits: nothing in flight, < 2 on the floor, 6 s
 //   cooldown, none while frozen. Kind weights Rainbow 35 / Freeze 25 / Mega 20
-//   / Lightning 20 (Freeze x2 at danger >= 0.6).
+//   / Lightning 20 (Freeze x2, Rainbow x1.5 at danger >= 0.6).
 //   Flight 0.7 s arc to r 3.8 +- 0.6 along the pop angle (+-12 deg), >= 1.2
 //   from other pickups and >= 1.0 from the player (8 tries, else r 2.5).
 //   Floor: collect within 0.7, magnet within 1.6 at 4 w/s, 10 s ttl (blink in
@@ -158,7 +158,9 @@ export class Pickups {
   private pickKind(): PickupKind {
     const core = this.core, p = core.fun.pickups;
     const kinds = core.def.pickups;
-    const w = (k: PickupKind) => p.weights[k] * (k === "freeze" && core.danger >= p.freezeDangerAt ? p.freezeDangerScale : 1);
+    const hot = core.danger >= p.freezeDangerAt;
+    const w = (k: PickupKind) =>
+      p.weights[k] * (hot && k === "freeze" ? p.freezeDangerScale : hot && k === "rainbow" ? p.rainbowDangerScale : 1);
     let total = 0;
     for (const k of kinds) total += w(k);
     let roll = core.random() * total;

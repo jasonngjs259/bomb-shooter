@@ -30,15 +30,18 @@ export class Resolver {
     else this.stick(shot, target);
   }
 
-  miss(x: number, z: number, deflected: boolean) {
+  miss(x: number, z: number, deflected: boolean, pushed = false) {
     const core = this.core;
     core.combo = 0;
-    core.emit("miss", deflected ? { x, z, deflected: true } : { x, z });
+    core.emit("miss", pushed ? { x, z, deflected: true, pushed: true } : deflected ? { x, z, deflected: true } : { x, z });
     core.sys.fever.add(-core.fun.fever.missPenalty);
   }
 
   // Seat the shot as a field bomb, then match. A shot that would NOT pop and
-  // whose edge would sit within deflectMargin of the border deflects instead.
+  // whose edge would sit within deflectMargin of the border becomes a WALL
+  // PUSH instead (wallPush.ts): consumed, the hit cluster is shoved outward.
+  // Exception: a same-colour shot whose edge stays > push.pairMinGap outside
+  // the line sticks (a pair, finished by the next match).
   private stick(shot: ShotState, target: SimBomb) {
     const core = this.core, c = core.config;
     const b = makeBomb(core.nextId++, shot.x, shot.z, shot.wild ? target.colorIndex : shot.colorIndex, true);
@@ -60,9 +63,13 @@ export class Resolver {
       const g = core.finder.group(core.active, core.grid, core.active.length - 1, core.link, true);
       if (g.length >= c.minMatch) group = g.map((i) => core.active[i]);
     }
-    if (!group && borderGap(b, c) <= c.deflectMargin) {
+    // Near the border a non-popping shot pushes, except a same-colour shot
+    // landing outside the line: it sticks as a pair so the next match pops it
+    // (push for room, then pair, then pop: a near-border single is always solvable).
+    const gap = borderGap(b, c);
+    if (!group && gap <= c.deflectMargin && !(b.colorIndex === target.colorIndex && gap > core.fun.push.pairMinGap)) {
       core.active.pop();
-      this.miss(b.x, b.z, true);
+      core.sys.push.push(target, b.x, b.z);
       return;
     }
     core.bombs.push(b);

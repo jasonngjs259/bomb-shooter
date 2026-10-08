@@ -102,12 +102,19 @@ Dev web builds expose `window.__arena = { engine, world }` for QA scripts.
   bonus, and every pop knocks nearby bombs back outwards.
 - Walk around inside the arena to get closer or find a better angle.
 - **You lose** when a creeping bomb crosses the arena's border line. Your
-  own shots can't lose the game: a non-matching shot that would stick within
-  1 unit of the line deflects, and a freshly stuck shot gets 1.5 s of grace.
+  own shots can't lose the game, and a bomb at the line is never hopeless:
+  a non-popping shot that would stick within 1 unit of the line becomes a
+  **WALL PUSH** (the shot is used up and shoves the bomb it hit, plus its
+  cluster, about 1.5 units back out; a second push on the same bomb within
+  2 s goes half as far; combo resets). A same-colour shot that still lands
+  outside the line sticks as a pair instead, so push for room, then pair
+  and pop. A freshly stuck shot gets 1.5 s of grace, and while a bomb is
+  within 2 units of the line your next colours favour the closest bombs.
 - **You win** when every bomb is cleared; then go on to the next level
   (more bombs, faster creep; the creep also surges every 20 s). The first
   levels ramp gently: 60, 75, 90 bombs, then +12 per level.
-- A shot that bounces off at the border line shows **DEFLECT**.
+- A wall push shows **PUSH!** with a ground shockwave; a shot bouncing off
+  the boss shield shows **DEFLECT**.
 - Help: the ground danger ring and the radar show where bombs are close,
   red arrows point at off-screen threats (threats behind you sit on the lower
   edge with a "!"), and the aim laser highlights the bombs that would pop.

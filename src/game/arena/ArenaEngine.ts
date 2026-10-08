@@ -52,6 +52,7 @@ import { Rollers } from "./rollers";
 import { Shots } from "./shots";
 import { Ticking, assignSpecials } from "./specialBombs";
 import { Stars } from "./stars";
+import { WallPush } from "./wallPush";
 import type { AimRay, ArenaBomb, ArenaConfig, ArenaEvents, ArenaPhase, NewGameOptions, ShooterState, ShotState } from "./types";
 
 export interface ArenaEngineOptions {
@@ -78,7 +79,7 @@ export class ArenaEngine {
     this.sys = core.sys = {
       pickups: new Pickups(core), fever: new Fever(core), ticking: new Ticking(core), rollers: new Rollers(core),
       roll: new RollSystem(core), boss: new Boss(core), stars: new Stars(core), ring: new RingMotion(core),
-      shots: new Shots(core), resolve: new Resolver(core),
+      shots: new Shots(core), resolve: new Resolver(core), push: new WallPush(core),
     };
     this.setup(1, {}); // title backdrop
   }
@@ -272,7 +273,7 @@ export class ArenaEngine {
       sys.ring.rotate(step);
       sys.ring.stepLurch(step);
       const base = core.worldPaused ? 0 : this.getCreepSpeed() * sys.boss.ringCreepScale();
-      stepCreep(core.active, c, base, step, core.grid, core.scratch);
+      stepCreep(core.active, c, base, step, core.grid, core.scratch, core.fun.push.rate);
       sys.boss.update(step);
       sys.ticking.update(world);
       sys.rollers.update(step);

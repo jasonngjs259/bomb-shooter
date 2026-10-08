@@ -20,6 +20,7 @@ import type { RollSystem } from "./roll";
 import type { Rollers } from "./rollers";
 import type { Shots } from "./shots";
 import type { Ticking } from "./specialBombs";
+import type { WallPush } from "./wallPush";
 import type { Stars } from "./stars";
 
 export interface Systems {
@@ -33,6 +34,7 @@ export interface Systems {
   ring: RingMotion;
   shots: Shots;
   resolve: Resolver;
+  push: WallPush;
 }
 
 // Engine-applied time scale (fever slow-mo, perfect dodge, boss hit-stop).
@@ -177,10 +179,33 @@ export class ArenaCore {
     return pickPresentColor(this.active, this.config.colorCount, this.random);
   }
 
+  // Current / next pick with the danger colour assist: while a bomb edge is
+  // within assist.gap of the border, `chance` of the time take the colour of
+  // one of the `closest` bombs nearest the border.
+  pickShotColor() {
+    const a = this.fun.assist, near = this.nearest;
+    let n = 0;
+    near.length = 0;
+    for (const b of this.active) {
+      const g = Math.hypot(b.x, b.z) - this.config.bombRadius - this.config.arenaRadius;
+      if (g > a.gap) continue;
+      if (n < a.closest) {
+        near[n++] = b;
+      } else {
+        let worst = 0;
+        for (let i = 1; i < n; i++) if (Math.hypot(near[i].x, near[i].z) > Math.hypot(near[worst].x, near[worst].z)) worst = i;
+        if (Math.hypot(b.x, b.z) < Math.hypot(near[worst].x, near[worst].z)) near[worst] = b;
+      }
+    }
+    if (n > 0 && this.random() < a.chance) return near[Math.floor(this.random() * n)].colorIndex;
+    return this.pickColor();
+  }
+  private readonly nearest: SimBomb[] = [];
+
   // Never hold a colour that has vanished from the field.
   refreshLoadout() {
     if (this.active.length === 0) return;
-    if (!hasColor(this.active, this.current)) this.current = this.pickColor();
-    if (!hasColor(this.active, this.next)) this.next = this.pickColor();
+    if (!hasColor(this.active, this.current)) this.current = this.pickShotColor();
+    if (!hasColor(this.active, this.next)) this.next = this.pickShotColor();
   }
 }

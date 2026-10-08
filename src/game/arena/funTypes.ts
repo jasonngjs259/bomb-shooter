@@ -160,6 +160,7 @@ export interface ArenaFunEvents {
   bossWeakColor: { colorIndex: number; next: number; in: number };
   bossPhase: { phase: 1 | 2 | 3; previous: 1 | 2 | 3 };
   bossDefeated: { mk: number; score: number; time: number };
+  wallPush: { x: number; z: number; bombs: FxBomb[]; distance: number };
   levelStars: {
     level: number; clear: boolean; fast: boolean; flawless: boolean; count: number; time: number; par: number;
     bestCombo: number; newBest: { score: boolean; combo: boolean; time: boolean };

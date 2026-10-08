@@ -1,7 +1,7 @@
 // Arena 360 effects (spec section 9) driven by engine events: muzzle flash,
 // stick dust ring, chain-staggered pops (flash, ground shockwave decal, 3D
 // particles with gravity, shell debris), orphan shatter, knock-back ring,
-// deflect sparks, creep surge warning, the lose sequence (hit-stop, border
+// deflect sparks (boss shield) and the wall-push ring + "PUSH!", creep surge warning, the lose sequence (hit-stop, border
 // flash, offending bomb detonates, ring chain-detonates by angle, player
 // blown back, camera crane), the avatar's surge flinch + deflect wobble and
 // the win celebration (slow-mo, colour chase,
@@ -151,10 +151,28 @@ export class ArenaFx {
         }
         setTimeout(haptics.rigid, 80);
       }),
-      e.on("miss", ({ x, z, deflected }) => {
-        if (!deflected) return;
+      // WALL PUSH (a non-popping shot near the border): the knock-back ground
+      // ring sized to the push + its echo, dust at the impact and "PUSH!"
+      e.on("wallPush", ({ x, z, bombs, distance }) => {
         this.avatar().deflect();
-        // the shot bounced off at the border line: spark + "DEFLECT"
+        const reach = this.engine.getFunConfig().push.radius + distance;
+        this.anim(true, x, 0.09, z, 0.4, 0.2, reach, this.white, 0.95);
+        this.later(0.1, () => this.anim(true, x, 0.085, z, 0.45, 0.2, reach * 1.25, this.dust, 0.5));
+        for (const b of bombs) this.anim(false, b.x, 0.45, b.z, 0.12, 0, 0.7, this.white, 0.6);
+        for (let i = 0; i < this.n(10); i++) {
+          const a = rand(0, Math.PI * 2);
+          this.spawn(x, 0.3, z, Math.cos(a) * rand(2, 5), rand(0.5, 2.5), Math.sin(a) * rand(2, 5), 0.3, 0.12, this.white, this.dust, -6, 0.92);
+        }
+        const sh = this.engine.getShooter();
+        const sp = this.project(sh.x, 2.4, sh.z);
+        this.bus.emit("floatText", { x: sp.x, y: sp.y - 30, text: "PUSH!", kind: "combo", combo: 3 });
+        this.shake(0.03, 0.15);
+        haptics.medium();
+      }),
+      e.on("miss", ({ x, z, deflected, pushed }) => {
+        if (!deflected || pushed) return; // pushes: see wallPush
+        this.avatar().deflect();
+        // the shot bounced off the boss shield: spark + "DEFLECT"
         this.anim(true, x, 0.1, z, 0.3, 0.2, 1.1, this.white, 0.9);
         this.anim(false, x, 0.45, z, 0.12, 0, 0.6, this.white, 1);
         // big screen-space pop above the player (not at the far border,

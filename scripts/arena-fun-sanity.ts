@@ -94,7 +94,7 @@ const R = 0, Y = 1, B = 2; // colour indices
     return fr / 3000;
   };
   near(kinds(0), 25 / 60, 0.03, "freeze weight 25 of 60");
-  near(kinds(0.7), 50 / 85, 0.03, "freeze weight doubles at danger >= 0.6");
+  near(kinds(0.7), 50 / 102.5, 0.03, "freeze x2 and rainbow x1.5 at danger >= 0.6");
   ok("drop table, combo bonus, pity, fever x0.5, cooldown, floor cap, freeze lock, kind weights");
 
   // L1 teach: the first n >= 4 pop drops a Rainbow
@@ -362,6 +362,86 @@ const R = 0, Y = 1, B = 2; // colour indices
   void tick;
   void tick2;
   ok("ticking: 8 s first arm, 15 s stagger, 20 s timer, 5..1 warnings, capped lurch (0.7 gap -> 0.1, no game over), defuse +100");
+}
+
+// ---- 8. Wall push solvability + danger colour assist ----------------------------
+{
+  // A lone red bomb 0.2 from the border and NO red ever on hand: wrong-colour
+  // shots must push it back (gap grows) and repeated pushes buy >= 10 s.
+  const setup = (seed: number) => {
+    const e = make(seed);
+    e.newGame({ level: 2 });
+    const [red] = arrange(e, [{ x: 0, z: -(6.45 + 0.2), c: R }, { x: 6, z: 8, c: Y }, { x: 6.9, z: 8.1, c: Y }], Y);
+    return { e, red };
+  };
+  const gapOf = (b: { x: number; z: number }) => Math.hypot(b.x, b.z) - 6.45;
+  const idleRun = setup(51);
+  run(idleRun.e, 60);
+  const idleSurvive = idleRun.e.getTime();
+  assert(idleRun.e.getPhase() === "gameOver", "untouched, the red bomb ends the game");
+
+  const { e, red } = setup(51);
+  const pushes = capture(e, "wallPush");
+  let last = -9, gainFirst = NaN;
+  while (e.getPhase() === "playing" && e.getTime() < 120) {
+    internals(e).core.current = internals(e).core.next = Y; // never the matching colour
+    if (e.getTime() - last >= 1.2 && e.getShots().length === 0 && gapOf(red) <= 0.95) {
+      const g0 = gapOf(red);
+      if (fireAt(e, red.x, red.z)) {
+        last = e.getTime();
+        flushShots(e);
+        run(e, 0.4);
+        if (Number.isNaN(gainFirst)) gainFirst = gapOf(red) - g0;
+        continue;
+      }
+    }
+    e.update(DT);
+  }
+  const pushSurvive = e.getTime();
+  assert(gainFirst > 0.8, `a wrong-colour push shoves the bomb back (gap +${gainFirst.toFixed(2)})`);
+  assert(pushSurvive - idleSurvive >= 10, `repeated pushes buy >= 10 s (${idleSurvive.toFixed(1)} s -> ${pushSurvive.toFixed(1)} s, ${pushes.length} pushes)`);
+  const solvable = `${idleSurvive.toFixed(1)} s idle vs ${pushSurvive >= 120 ? ">= 120" : pushSurvive.toFixed(1)} s pushing (${pushes.length} pushes), first push +${gainFirst.toFixed(2)} w`;
+
+  // ... and it is always solvable: push for room, then pair + pop with red
+  const s2 = setup(52);
+  const s2e = s2.e;
+  for (let k = 0; k < 2; k++) {
+    internals(s2e).core.current = Y;
+    fireAt(s2e, s2.red.x, s2.red.z);
+    flushShots(s2e);
+    run(s2e, 1.3);
+  }
+  for (let k = 0; k < 2; k++) {
+    internals(s2e).core.current = R;
+    fireAt(s2e, s2.red.x, s2.red.z);
+    flushShots(s2e);
+    run(s2e, 0.3);
+  }
+  assert(s2.red.state !== "idle" && s2e.getPhase() === "playing", "push, then same-colour pair + pop clears the near-border single");
+
+  // repeat pushes within 2 s are halved; armored / ticking keep armor + timer
+  const s3 = setup(53);
+  const w = capture(s3.e, "wallPush");
+  Object.assign(s3.red, { kind: "armored", armor: 1 });
+  internals(s3.e).core.current = Y;
+  fireAt(s3.e, s3.red.x, s3.red.z);
+  flushShots(s3.e);
+  run(s3.e, 0.3);
+  s3.red.x = 0;
+  s3.red.z = -(6.45 + 0.3);
+  internals(s3.e).core.current = Y;
+  fireAt(s3.e, s3.red.x, s3.red.z);
+  flushShots(s3.e);
+  assert(w.length === 2 && w[1].distance === w[0].distance * 0.5 && s3.red.armor === 1, "second push within 2 s is halved; armor kept");
+
+  // danger colour assist: with a bomb near the line, ~60% (+ uniform share) of picks are its colour
+  const a = make(54);
+  a.newGame({ level: 2 });
+  arrange(a, [{ x: 0, z: -(6.45 + 0.5), c: R }, { x: 6, z: 8, c: Y }, { x: -6, z: 8, c: B }, { x: 6, z: -8, c: 3 }], Y);
+  let reds = 0;
+  for (let i = 0; i < 3000; i++) if (internals(a).core.pickShotColor() === R) reds++;
+  near(reds / 3000, 0.6 + 0.4 / 4, 0.03, "danger assist favours the near-border colour");
+  ok("wall push: solvable near-border single, >= 10 s from pushes, pair + pop, halved repeats, armor kept, colour assist", solvable);
 }
 
 console.log("arena fun sanity (part 1): OK");

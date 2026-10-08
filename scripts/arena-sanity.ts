@@ -280,9 +280,11 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
   ok("won when the field is empty", `score ${e.getScore()}`);
 }
 
-// ---- 6b. Deflect: a non-popping shot that would stick inside the border ----
+// ---- 6b. Wall push: a non-popping shot that would stick inside the border
+// is consumed and shoves the hit cluster outward (it used to deflect). ----
 {
   let checked = 0;
+  const moved: number[] = [];
   for (const seed of [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]) {
     const e = make(seed, { ringInner: 7.1, ringOuter: 8.1, bombCount: 30, earlyLevels: [] });
     e.newGame();
@@ -295,40 +297,38 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
       e.aimAt(b.x, b.z);
       const ray = e.getAimRay();
       if (ray.landing && ray.wouldPopIds.length === 0 && radial(ray.landing) - c.bombRadius <= c.arenaRadius) {
-        target = b;
+        target = idle(e).find((x) => x.id === ray.hitBombId) ?? null;
         break;
       }
     }
     if (!target) continue;
+    const hit = target;
+    const r0 = radial(hit);
     const remaining = e.getRemaining();
     const ids = new Set(e.getBombs().map((b) => b.id));
-    let deflected = false;
-    let lost = false;
-    let stuckGap = Infinity;
-    e.on("miss", (m) => (deflected = m.deflected === true));
-    e.on("stick", (st) => (stuckGap = Math.hypot(st.x, st.z) - c.bombRadius - c.arenaRadius));
+    let pushed = false, pushEvent = false, lost = false;
+    e.on("miss", (m) => (pushed = m.deflected === true && m.pushed === true));
+    e.on("wallPush", (w) => (pushEvent = w.bombs.some((b) => b.id === hit.id) && w.distance > 0));
     e.on("gameOver", () => (lost = true));
-    assert(e.fire(), "deflect: fired");
+    assert(e.fire(), "push: fired");
     for (let i = 0; i < 120 && e.getShot(); i++) e.update(DT);
+    run(e, 0.5);
     assert(!lost && e.getPhase() === "playing", `seed ${seed}: a shot near the border never ends the game`);
-    if (!deflected) {
-      // separation pushed it clear of the border: a normal stick is fine
-      assert(stuckGap > 0, `seed ${seed}: shot either deflects or sticks outside the border`);
-      continue;
-    }
-    assert(e.getRemaining() === remaining && e.getCombo() === 0, "deflected shot does not join the field");
-    assert(e.getBombs().every((b) => ids.has(b.id)), "no new bomb added");
+    assert(pushed && pushEvent, `seed ${seed}: wallPush + miss {deflected, pushed}`);
+    assert(e.getRemaining() === remaining && e.getCombo() === 0 && e.getBombs().every((b) => ids.has(b.id)), "pushing shot does not join the field");
+    assert(radial(hit) > r0 + 0.3, `seed ${seed}: the hit bomb is shoved outward (${(radial(hit) - r0).toFixed(2)})`);
+    moved.push(radial(hit) - r0);
     checked++;
   }
-  assert(checked >= 2, `deflect scenario found (${checked})`);
-  ok("non-popping shot inside the border deflects (miss.deflected), only creep loses", `${checked} seeds`);
+  assert(checked >= 2, `push scenario found (${checked})`);
+  ok("non-popping shot inside the border wall-pushes the cluster out", `${checked} seeds, moved ${moved.map((m) => m.toFixed(2)).join(" ")} w`);
 }
 
-// ---- 6c. QA r3: a non-popping shot sticking JUST OUTSIDE the line (edge
-// within deflectMargin, e.g. landing centre r 6.48 / edge 6.03) used to stick
-// and end the run within 1 s. It must deflect, with the creep running.
+// ---- 6c. A non-popping shot landing JUST OUTSIDE the line (edge within
+// deflectMargin) never sticks into a loss: a wrong colour pushes; a same
+// colour (edge > pairMinGap outside) sticks as a pair. Creep keeps running.
 {
-  let checked = 0;
+  let pushes = 0, pairs = 0;
   const gaps: number[] = [];
   for (const seed of [31, 32, 33, 34, 35, 36, 37, 38, 39, 40]) {
     const e = make(seed, { ringInner: 7.35, ringOuter: 8.35, bombCount: 30, earlyLevels: [] });
@@ -336,7 +336,7 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
     run(e, 0.3);
     if (e.getPhase() !== "playing") continue;
     const c = e.getConfig();
-    let gap = NaN;
+    let gap = NaN, same = false;
     for (const bomb of idle(e)) {
       e.aimAt(bomb.x, bomb.z);
       const ray = e.getAimRay();
@@ -344,25 +344,34 @@ function aimbot(seed: number, human = false, level = 1, pace = 1.2, turnDeg = 15
       const g = radial(ray.landing) - c.bombRadius - c.arenaRadius;
       if (g > 0 && g <= c.deflectMargin) {
         gap = g;
+        same = idle(e).find((x) => x.id === ray.hitBombId)?.colorIndex === e.getCurrentBomb();
         break;
       }
     }
     if (!Number.isFinite(gap)) continue;
-    let deflected = false;
+    let pushed = false, stuck = false;
     let lostAt = -1;
-    e.on("miss", (m) => (deflected = deflected || m.deflected === true));
+    e.on("wallPush", () => (pushed = true));
+    e.on("stick", () => (stuck = true));
     e.on("gameOver", () => (lostAt = e.getTime()));
     const t0 = e.getTime();
     assert(e.fire(), "margin: fired");
     run(e, 2); // creep keeps running
-    assert(deflected, `seed ${seed}: shot landing ${gap.toFixed(2)} outside the line deflects`);
+    if (same && gap > 0.15 + 0.05) {
+      assert(stuck && !pushed, `seed ${seed}: same colour at ${gap.toFixed(2)} sticks as a pair`);
+      pairs++;
+    } else if (!same) {
+      assert(pushed && !stuck, `seed ${seed}: wrong colour landing ${gap.toFixed(2)} outside the line pushes`);
+      pushes++;
+    }
     assert(lostAt < 0 || lostAt - t0 > 2, `seed ${seed}: the player's own shot doesn't end the run`);
     gaps.push(gap);
-    checked++;
   }
-  assert(checked >= 3, `margin scenario found (${checked})`);
-  ok("shot sticking just outside the line deflects (deflectMargin)", `${checked} seeds, gaps ${gaps.map((g) => g.toFixed(2)).join(" ")}`);
+  assert(pushes >= 3, `margin push scenario found (${pushes})`);
+  ok("shot landing just outside the line: wrong colour pushes, same colour pairs", `${pushes} pushes, ${pairs} pairs, gaps ${gaps.map((g) => g.toFixed(2)).join(" ")}`);
+}
 
+{
   // Grace: with no margin, a stuck shot that ends up over the line can't
   // end the game for stuckGrace seconds; creeping bombs still can.
   let graced = 0;

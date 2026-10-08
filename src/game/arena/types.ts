@@ -68,7 +68,7 @@ export interface ArenaConfig {
   knockbackDamping: number; // kick decay rate, 1 / s
 
   dangerRange: number; // gap (bomb edge to border) at which danger starts
-  deflectMargin: number; // a non-popping shot whose edge would stick within this of the border deflects
+  deflectMargin: number; // a non-popping shot whose edge would stick within this of the border wall-pushes instead
   stuckGrace: number; // seconds a freshly stuck shot can't trigger game over
   popDuration: number; // seconds a popping bomb fades
   shatterDuration: number; // seconds a shattering bomb drifts + fades
@@ -151,7 +151,9 @@ export interface ArenaEvents extends ArenaFunEvents {
   shatter: { bombs: FxBomb[] };
   // shot fizzled at max range, or deflected: it would have stuck on/inside
   // the border line without popping (no game over for that; combo resets)
-  miss: { x: number; z: number; deflected?: boolean };
+  // pushed: true = it was a near-border WALL PUSH (see the wallPush event); a
+  // deflect without pushed is a wrong-colour shot off the boss shield.
+  miss: { x: number; z: number; deflected?: boolean; pushed?: boolean };
   creepSurge: { speed: number; surge: number }; // base speed after the surge
   dangerChanged: { level: number; tier: number; previousTier: number };
   swap: { colorIndex: number; nextColorIndex: number };

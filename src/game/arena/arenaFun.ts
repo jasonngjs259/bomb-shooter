@@ -18,8 +18,9 @@ export const ARENA_FUN = {
     dropCooldown: 6,
     feverChanceScale: 0.5,
     weights: { rainbow: 35, freeze: 25, mega: 20, lightning: 20 } as Record<PickupKind, number>,
-    freezeDangerAt: 0.6, // freeze weight x freezeDangerScale while danger >= this
+    freezeDangerAt: 0.6, // freeze weight x freezeDangerScale (rainbow x rainbowDangerScale) while danger >= this
     freezeDangerScale: 2,
+    rainbowDangerScale: 1.5,
     flight: 0.7, // s
     apexY: 2.5,
     groundY: 0.6,
@@ -127,6 +128,19 @@ export const ARENA_FUN = {
     minInput: 0.3,
     exitSpeed: 3,
   },
+  // WALL PUSH: a non-popping shot that would stick within deflectMargin of the
+  // border is consumed and shoves the hit bomb's connected cluster (within
+  // `radius` of the impact) radially outward by `distance`, easing out at
+  // `rate` (95% in ~0.25 s); a bomb pushed again within `repeatWindow` s
+  // moves `repeatScale` as far. Bombs within `neighbourRadius` get an outward
+  // kick of up to `neighbourKick` w/s. Armor and ticking timers are untouched.
+  // A same-colour (non-popping) shot whose edge stays > `pairMinGap` outside
+  // the line sticks instead (a pair to finish with the next match).
+  push: { distance: 1.5, radius: 1.2, rate: 12, repeatWindow: 2, repeatScale: 0.5, neighbourRadius: 2.5, neighbourKick: 0.6, pairMinGap: 0.15 },
+  // Danger colour assist: when a bomb edge is within `gap` of the border,
+  // current/next picks take the colour of one of the `closest` bombs nearest
+  // the border with probability `chance`.
+  assist: { gap: 2.0, chance: 0.6, closest: 3 },
   rotation: { easeIn: 2 },
   doubleRing: { innerMin: 10.0, innerMax: 11.6, innerShare: 0.25, gaps: 4, gapDeg: 22, outerStart: 14.0 },
   boss: {

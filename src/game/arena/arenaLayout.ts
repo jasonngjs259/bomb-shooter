@@ -25,9 +25,11 @@ import { BandSpec, levelDef } from "./arenaLevels";
  *            (4 relaxation passes per update).
  *   Lose     any idle bomb with dist - radius <= arenaRadius -> gameOver.
  *            Only creep loses: a shot that would NOT pop and would stick
- *            with its edge within deflectMargin (1.0) of the border deflects
- *            ("miss", deflected: true, combo reset), and a freshly stuck shot
- *            can't end the game for stuckGrace (1.5 s).
+ *            with its edge within deflectMargin (1.0) of the border becomes a
+ *            WALL PUSH instead (consumed, shoves the hit cluster ~1.5 w
+ *            outward; "wallPush" + "miss" {deflected, pushed}, combo reset;
+ *            see ARENA_FUN.push), and a freshly stuck shot can't end the game
+ *            for stuckGrace (1.5 s).
  *   Move     3 u/s top speed. Velocity follows the input through a
  *            critically damped spring: omega 22 speeding up (95% in 215 ms),
  *            26 slowing down (95% in 180 ms), 18 when reversing. Centre
@@ -96,7 +98,7 @@ export const ARENA_CONFIG: ArenaConfig = {
   knockbackDamping: 3,
 
   dangerRange: 3,
-  deflectMargin: 1.0,
+  deflectMargin: 1.0, // wall-push trigger distance (the name predates the push)
   stuckGrace: 1.5,
   popDuration: 0.3,
   shatterDuration: 0.7,
@@ -133,7 +135,7 @@ const blocked = (bombs: readonly SimBomb[], x: number, z: number, minDist: numbe
 
 export const makeBomb = (id: number, x: number, z: number, colorIndex: number, stuck = false): SimBomb => ({
   id, x, z, colorIndex, state: "idle", alpha: 1, age: 0, stuck, kind: "normal", armor: 0, band: 0, timer: null,
-  armed: false, telegraph: -1, kick: 0, vx: 0, vz: 0, clump: -1,
+  armed: false, telegraph: -1, kick: 0, vx: 0, vz: 0, clump: -1, push: 0, lastPush: -Infinity,
 });
 
 // Clump sizes summing to `count` (never leaves a lone 1 unless count is 1).

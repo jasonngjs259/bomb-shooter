@@ -7,6 +7,7 @@
 //   Fever: nearest bomb in view.  Ticking: an armed bomb with <= 8 s left first.
 //   Rollers: shoot with lead; roll perpendicular at time-to-contact <= 0.6 s
 //   (no-roll variant: never dodges, it can only shoot them).
+//   Wall push: a bomb within 0.8 of the border is popped if possible, else pushed.
 //   Boss: core whenever the ray reaches it (weak colour preferred, waits for a
 //   shield gap), else matching shield bombs with lead (swap if next matches).
 
@@ -15,9 +16,9 @@ import { DT, make } from "./arena-kit";
 
 const DEG = Math.PI / 180;
 
-export interface BotResult { won: boolean; time: number; pickups: number; fevers: number; lurches: number; rollerHits: number; rolls: number }
+export interface BotResult { won: boolean; time: number; pickups: number; fevers: number; lurches: number; rollerHits: number; rolls: number; pushes: number }
 export interface BotOptions {
-  roll: boolean; pace?: number; turnDeg?: number; maxTime?: number; trace?: (e: ArenaEngine) => void;
+  roll: boolean; push?: boolean; pace?: number; turnDeg?: number; maxTime?: number; trace?: (e: ArenaEngine) => void;
   patch?: Partial<LevelDef> & { bossPatch?: Partial<BossDef> }; // tuning experiments
 }
 
@@ -31,7 +32,8 @@ type Plan =
 export function playBot(level: number, seed: number, o: BotOptions): BotResult {
   const pace = o.pace ?? 1.2, maxTurn = (o.turnDeg ?? 150) * DEG * DT;
   const e = make(seed);
-  const r: BotResult = { won: false, time: 0, pickups: 0, fevers: 0, lurches: 0, rollerHits: 0, rolls: 0 };
+  const r: BotResult = { won: false, time: 0, pickups: 0, fevers: 0, lurches: 0, rollerHits: 0, rolls: 0, pushes: 0 };
+  e.on("wallPush", () => r.pushes++);
   e.on("pickupCollected", () => r.pickups++);
   e.on("feverStart", () => r.fevers++);
   e.on("lurch", () => r.lurches++);
@@ -84,7 +86,9 @@ export function playBot(level: number, seed: number, o: BotOptions): BotResult {
     for (const b of cands.slice(0, limit)) {
       const ray = aim(b.x, b.z);
       if (ray.target !== "bomb") continue;
-      if (wantPop ? ray.wouldPopIds.length > 0 : ray.hitBombId === b.id && ray.landing && Math.hypot(ray.landing.x, ray.landing.z) - 6.45 > c.deflectMargin + 0.05) {
+      const landGap = ray.landing ? Math.hypot(ray.landing.x, ray.landing.z) - 6.45 : -1;
+      const sticks = landGap > c.deflectMargin + 0.05 || (b.colorIndex === e.getCurrentBomb() && landGap > 0.25); // same colour pairs near the line
+      if (wantPop ? ray.wouldPopIds.length > 0 : ray.hitBombId === b.id && sticks) {
         return bombPlan(b.id, b.x, b.z);
       }
     }
@@ -124,9 +128,37 @@ export function playBot(level: number, seed: number, o: BotOptions): BotResult {
     return aim(tick.x, tick.z).hitBombId === tick.id ? bombPlan(tick.id, tick.x, tick.z) : null;
   };
 
+  // A bomb about to touch the border: pop it if any colour on hand can,
+  // else WALL PUSH it (a non-popping shot within deflectMargin shoves it back).
+  const emergencyPlan = (): Plan | null => {
+    const close = idle().sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))[0];
+    if (!close || Math.hypot(close.x, close.z) - 6.45 > 0.6) return null;
+    const near = idle().filter((b) => dist(b, close) < 2.5);
+    const tryPop = () => {
+      for (const b of near) if (aim(b.x, b.z).wouldPopIds.includes(close.id)) return bombPlan(b.id, b.x, b.z);
+      return null;
+    };
+    let p = tryPop();
+    if (!p && !e.getPowerSlot() && !e.getFever().active) {
+      e.swapBomb();
+      p = tryPop();
+    }
+    if (p) return p;
+    // any pop that clears something within 1.0 of the border beats a push
+    const hot = new Set(idle().filter((b) => Math.hypot(b.x, b.z) - 6.45 <= 1.0).map((b) => b.id));
+    for (const b of idle().filter((x) => x.colorIndex === e.getCurrentBomb() && Math.hypot(x.x, x.z) < 9.5)) {
+      if (aim(b.x, b.z).wouldPopIds.some((id) => hot.has(id))) return bombPlan(b.id, b.x, b.z);
+    }
+    const ray = aim(close.x, close.z);
+    if (ray.target === "bomb" && ray.wouldPopIds.length === 0 && ray.landing && Math.hypot(ray.landing.x, ray.landing.z) - 6.45 <= c.deflectMargin) {
+      return bombPlan(ray.hitBombId!, close.x, close.z);
+    }
+    return null;
+  };
+
   const bossPlan = (): Plan | null => {
     const boss = e.getBoss();
-    if (!boss || e.getDangerLevel() > 0.6) return null;
+    if (!boss || (e.getDangerLevel() > 0.6 && e.getRemaining() > 6)) return null;
     const fever = e.getFever().active, s = e.getShooter();
     if (!fever && e.getNextBomb() === boss.weakColor && e.getCurrentBomb() !== boss.weakColor && !e.getPowerSlot()) e.swapBomb();
     if (aim(boss.x, boss.z).target === "core" || boss.shield.length <= Math.floor(e.getLevelDef().boss!.shield / 2)) return { kind: "core", wait: 1.5 };
@@ -163,6 +195,7 @@ export function playBot(level: number, seed: number, o: BotOptions): BotResult {
     let p = rollerPlan();
     if (!p && slot) p = powerPlan(slot);
     if (!p) p = tickingPlan();
+    if (!p && o.push !== false) p = emergencyPlan();
     if (!p) p = bossPlan();
     if (!p && fever) p = popPlan(-1, true, 8) ?? popPlan(-1, false, 8);
     if (!p) {

@@ -48,7 +48,7 @@ if (process.argv[1]?.endsWith("arena-balance.ts")) {
         `L${String(lv).padEnd(2)} ${withRoll ? "roll  " : "noroll"} win ${pct(rate).padStart(4)} (floor ${pct(floorOf(lv))})  median ${String(med).padStart(5)} s (band ${lo}-${hi})` +
         `  fever ${pct(res.filter((x) => x.fevers > 0).length / res.length)}  pickups ${(res.reduce((s, x) => s + x.pickups, 0) / res.length).toFixed(1)}` +
         `  lurch ${pct(res.filter((x) => x.lurches > 0).length / res.length)}  rollerHit ${pct(res.filter((x) => x.rollerHits > 0).length / res.length)}` +
-        `  rolls ${(res.reduce((s, x) => s + x.rolls, 0) / res.length).toFixed(1)}${lostAt.length ? `  lost@ ${lostAt.join(",")}` : ""}${flag}`,
+        `  rolls ${(res.reduce((s, x) => s + x.rolls, 0) / res.length).toFixed(1)}  pushes ${(res.reduce((s, x) => s + x.pushes, 0) / res.length).toFixed(1)}${lostAt.length ? `  lost@ ${lostAt.join(",")}` : ""}${flag}`,
       );
       console.log(rows[rows.length - 1]);
     }

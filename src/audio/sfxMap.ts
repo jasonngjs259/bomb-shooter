@@ -11,7 +11,9 @@
 //                6+ bombs layer chain
 // shatter        shatter
 // drop (Classic) chain (80 ms later, 1.1, gain 0.5), 3+ tiles
-// miss           deflected: deflect (0.95-1.05); range: dodge whoosh (0.85, quiet)
+// wallPush       knockback whoosh (0.96-1.04, 0.8) + deflect (0.8, 0.7)
+// miss           deflected (boss shield): deflect (0.95-1.05); range: dodge whoosh (0.85, quiet);
+//                pushed: nothing (wallPush covers it)
 // wallBounce     deflect (1.25, quiet)
 // creepSurge /   surge alarm + rumble                         duck
 // ceilingDrop    rumble                                       duck
@@ -139,7 +141,12 @@ export function bindArenaAudio(
       a.music.setDanger(engine.getDangerLevel());
     }),
     engine.on("shatter", () => a.play("shatter", jitter(0.04))),
-    engine.on("miss", ({ deflected }) => {
+    engine.on("wallPush", () => {
+      a.play("knockback", jitter(0.04), 0.8);
+      a.play("deflect", 0.8, 0.7);
+    }),
+    engine.on("miss", ({ deflected, pushed }) => {
+      if (pushed) return; // wallPush plays it
       if (deflected) a.play("deflect", jitter(0.05));
       else a.play("dodge", 0.85, 0.6);
     }),

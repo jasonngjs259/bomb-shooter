@@ -79,7 +79,7 @@ The unchanged getters are `getBombs`, `getShooter`, `getCurrentBomb/NextBomb`, `
 Existing events are unchanged: `shoot`, `stick`, `pop`, `shatter`, `miss`, `creepSurge`, `dangerChanged`, `swap`, `gameOver`, `won`, `scoreChanged` and `phaseChanged`.
 - `pop` also fires for Rainbow, Lightning and Mega removals. For Mega and Lightning, `megaBlast` or `lightningChain` comes first.
 - Armored bombs count toward a match but stay in the field, so `pop.bombs` can hold fewer than 3.
-- `miss.deflected` also covers a wrong-colour shot bouncing off the boss shield.
+- `miss.deflected` now means a wrong-colour shot bouncing off the boss shield. Near the border there is no deflect any more: a WALL PUSH emits `wallPush` and then `miss { deflected: true, pushed: true }` for back-compat, so skip `pushed` misses if you handle `wallPush`.
 - `gameOver.bombId` is the boss core's id when the core reaches the border.
 
 | Event | Payload | Fires when |
@@ -121,9 +121,15 @@ Existing events are unchanged: `shoot`, `stick`, `pop`, `shatter`, `miss`, `cree
 | `bossWeakColor` | `{ colorIndex, next, in }` | Weak colour changed (every 6 s). Flicker `next` when `weakIn <= 1` |
 | `bossPhase` | `{ phase, previous }` | At ≤ 60% and ≤ 25% HP, after `bossHit` |
 | `bossDefeated` | `{ mk, score, time }` | Core HP 0. Followed by `shatter` for the ring chain, then `won` and `levelStars` |
+| `wallPush` | `{ x, z, bombs: FxBomb[], distance }` | A non-popping shot would have stuck within `deflectMargin` (1.0) of the border. The shot is consumed and `bombs` (the hit bomb's cluster within 1.2 w of the impact) ease `distance` w outward over ~0.25 s (1.5, halved on a bomb pushed within 2 s). Neighbours get a small kick. Combo resets, fever −8. A same-colour shot landing > 0.15 outside the line sticks as a pair instead |
 | `levelStars` | `{ level, clear, fast, flawless, count, time, par, bestCombo, newBest: { score, combo, time } }` | Right after `won`. This is pure data; the UI persists it |
 
 **Order within one update:** `pop` → `shatter` → `armorBroken` → `tickingDefused` → `feverChanged` → `scoreChanged` → `pickupSpawned`, then `phaseChanged(won)` → `won` → `levelStars`. `bossHit` comes before `bossPhase`. On a boss kill the order is `bossHit` → `bossDefeated` → `slowMo` → `shatter` → `scoreChanged` → `phaseChanged(won)` → `won` → `levelStars`.
+
+## Wall push and the danger colour assist
+
+- **Wall push** (`ARENA_FUN.push`): `distance` 1.5 w, cluster `radius` 1.2 w around the impact, eased at `rate` 12/s (95% in ~0.25 s). A repeat on the same bomb within `repeatWindow` 2 s goes `repeatScale` 0.5 as far. Neighbours within 2.5 w get up to 0.6 w/s of outward kick. Armor and ticking timers are untouched. Boss-shield deflects are unchanged.
+- **Colour assist** (`ARENA_FUN.assist`): while any bomb edge is within 2.0 w of the border, current/next picks take the colour of one of the 3 bombs closest to the border 60% of the time. While danger ≥ 0.6, the Rainbow pickup weight is ×1.5 (Freeze stays ×2).
 
 ## Notes for the renderer / UI
 
@@ -153,7 +159,8 @@ Existing events are unchanged: `shoot`, `stick`, `pop`, `shatter`, `miss`, `cree
 | `pop_0..7` | `pop` (pitch from `combo`; fever uses `pop_7`) |
 | `pop_big` | `pop` when `bombs.length + shatter >= 6` |
 | `shatter` | `shatter` |
-| `deflect` | `miss` with `deflected` |
+| `deflect` | `miss` with `deflected` and no `pushed` (boss shield) |
+| `knockback` + `deflect` (0.8) | `wallPush` |
 | `miss` | `miss` without `deflected` |
 | `swap` | `swap` |
 | `denied` | `swapBomb()` returns false |

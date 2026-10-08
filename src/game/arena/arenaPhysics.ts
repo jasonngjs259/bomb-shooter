@@ -10,6 +10,8 @@ export interface SimBomb extends ArenaBomb {
   vx: number; // drift velocity while shattering
   vz: number;
   clump: number; // layout clump index (specials never share one), -1 for stuck shots / spawned bombs
+  push: number; // wall push still to apply, w (eases out at ARENA_FUN.push.rate)
+  lastPush: number; // game time of the last wall push on this bomb (-Infinity = never)
 }
 
 // ---- Spatial grid -------------------------------------------------------------

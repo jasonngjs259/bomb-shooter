@@ -67,16 +67,23 @@ export function clampShooter(s: ShooterState, c: ArenaConfig) {
 
 export const isMoving = (s: ShooterState) => Math.hypot(s.vx, s.vz) > MOVING_SPEED;
 
-// Radial creep (faster further out) + decaying knock-back kick, then relax.
+// Radial creep (faster further out) + decaying knock-back kick + easing wall
+// push, then relax.
 export function stepCreep(
-  active: SimBomb[], c: ArenaConfig, base: number, dt: number, grid: SpatialGrid, scratch: number[]
+  active: SimBomb[], c: ArenaConfig, base: number, dt: number, grid: SpatialGrid, scratch: number[], pushRate = 12
 ) {
   const damp = Math.exp(-c.knockbackDamping * dt);
+  const ease = 1 - Math.exp(-pushRate * dt);
   for (const b of active) {
     const d = Math.hypot(b.x, b.z);
     if (d < 1e-6) continue;
     const creep = base * (1 + c.creepDistanceFactor * Math.max(0, d - c.arenaRadius));
-    const move = (b.kick - creep) * dt;
+    let push = 0;
+    if (b.push > 0) {
+      push = b.push > 1e-3 ? b.push * ease : b.push;
+      b.push -= push;
+    }
+    const move = (b.kick - creep) * dt + push;
     b.x += (b.x / d) * move;
     b.z += (b.z / d) * move;
     b.kick *= damp;

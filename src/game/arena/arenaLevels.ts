@@ -9,15 +9,16 @@
 //  3   BOSS Mk I ring 48     boss, mega pickup                     armored x4                                     -           90
 //  4   90  / 0.035           ticking x2 (20 s), rotation, lightning armored 6                                     +4 deg/s    95
 //  5   102 / 0.038           rollers x3 (1 live), ROLL             armored 6, ticking 2                           -          100
-//  6   BOSS Mk II ring 60    boss rollers in phase 2               armored 4 [6], ticking 1 [2] 24 s [20], creep 0.032 [0.038]  -3  110
-//  7   114 / 0.041           double ring                           armored 6 [8], ticking 3 (18 s), rollers 3     static     115
-//  8   126 / 0.040 [0.044]   counter-rotating double ring          armored 5 [10], ticking 3, rollers 4 (2 live)  +5/-3      120
+//  6   BOSS Mk II ring 60    boss rollers in phase 2               armored 6, ticking 2 (20 s), creep 0.038       -3 deg/s   110
+//  7   114 / 0.041           double ring                           armored 8, ticking 3 (18 s), rollers 3         static     115
+//  8   126 / 0.044           counter-rotating double ring          armored 10, ticking 3, rollers 4 (2 live)      +5/-3      120
 //  9   BOSS Mk III ring 72   creep 0.034 [0.044]                   armored 4 [8], ticking 1 [2] (18 s)            +4         125
-//  10+ k = L-10: bombs min(150, 138+12k); armored min(10, 6+floor(k/3)) [min(16, 10+k)];
-//      L%3==1 rotating 5 deg/s, creep min(0.050, 0.047+0.001k) [min(0.060, 0.047+0.003k)];
-//      L%3==2 double ring +5/-3, creep min(0.044, 0.038+0.001k) [same as rotating];
+//  10+ k = L-10: bombs min(150, 138+12k), creep min(0.060, 0.047+0.003k), armored min(16, 10+k);
+//      L%3==1 rotating 5 deg/s, L%3==2 double ring +5/-3;
 //      L%3==0 BOSS Mk L/3: creep 0.032+0.001(n-4) [previous level's], armored = previous x0.6 [x0.7],
 //      ticking 1 [previous x0.7], previous level's rotation.
+//  (L6-L8 and the L10+ deck went back to the spec numbers once the wall push
+//  made near-border singles solvable; bosses stay tuned.)
 //  Boss Mk n (bossDef): HP 12 + 2 max(0, n-2) = 12/12/14/16 [10+4(n-1) = 10/14/18/22]; shield min(12, 6+2n) [cap 14];
 //      orbit min(64, 24+12n) deg/s [cap 80]; regrow Mk I 7 s, Mk II-III 8 s, IV+ 9 s [max(3.5, 8-n) = 7/6/5/4].
 // Rotation sign: + = angle increasing from +x towards +z (clockwise seen from above with +z down).
@@ -55,9 +56,9 @@ export const LEVELS: readonly LevelRow[] = [
   row({ bombs: 48, creep: 0.0322, armored: 4, boss: 1, par: 90 }),
   row({ bombs: 90, creep: 0.035, armored: 6, ticking: 2, rotation: [4, 4], par: 95 }),
   row({ bombs: 102, creep: 0.038, armored: 6, ticking: 2, rollers: 3, par: 100 }),
-  row({ bombs: 60, creep: 0.032, armored: 4, ticking: 1, tickTimer: 24, rotation: [-3, -3], boss: 2, par: 110 }),
-  row({ bombs: 114, creep: 0.041, armored: 6, ticking: 3, tickTimer: 18, rollers: 3, doubleRing: true, par: 115 }),
-  row({ bombs: 126, creep: 0.04, armored: 5, ticking: 3, tickTimer: 18, rollers: 4, rollersLive: 2, rotation: [5, -3], doubleRing: true, par: 120 }),
+  row({ bombs: 60, creep: 0.038, armored: 6, ticking: 2, rotation: [-3, -3], boss: 2, par: 110 }),
+  row({ bombs: 114, creep: 0.041, armored: 8, ticking: 3, tickTimer: 18, rollers: 3, doubleRing: true, par: 115 }),
+  row({ bombs: 126, creep: 0.044, armored: 10, ticking: 3, tickTimer: 18, rollers: 4, rollersLive: 2, rotation: [5, -3], doubleRing: true, par: 120 }),
   row({ bombs: 72, creep: 0.034, armored: 4, ticking: 1, tickTimer: 18, rollersLive: 2, rotation: [4, 4], boss: 3, par: 125 }),
 ];
 
@@ -71,11 +72,10 @@ function generatedRow(level: number): LevelRow {
     });
   }
   const k = level - 10;
-  const rotating = level % 3 === 1;
-  const deck = rotating ? { rotation: [5, 5] as [number, number] } : { rotation: [5, -3] as [number, number], doubleRing: true };
+  const deck = level % 3 === 1 ? { rotation: [5, 5] as [number, number] } : { rotation: [5, -3] as [number, number], doubleRing: true };
   return row({
-    bombs: Math.min(150, 138 + 12 * k), creep: rotating ? Math.min(0.05, 0.047 + 0.001 * k) : Math.min(0.044, 0.038 + 0.001 * k),
-    par: Math.min(150, 130 + 5 * k), armored: Math.min(10, 6 + Math.floor(k / 3)), ticking: Math.min(5, 4 + Math.floor(k / 2)), tickTimer: 16,
+    bombs: Math.min(150, 138 + 12 * k), creep: Math.min(0.06, 0.047 + 0.003 * k),
+    par: Math.min(150, 130 + 5 * k), armored: Math.min(16, 10 + k), ticking: Math.min(5, 4 + Math.floor(k / 2)), tickTimer: 16,
     rollers: Math.min(6, 4 + Math.floor(k / 2)), rollersLive: 2, ...deck,
   });
 }

@@ -46,7 +46,7 @@ export class Shots {
     if (power) core.emit("powerFired", { kind: power, x: s.muzzleX, z: s.muzzleZ, yaw: s.yaw });
     else {
       core.current = core.next;
-      core.next = core.pickColor();
+      core.next = core.pickShotColor();
       core.refreshLoadout();
     }
     core.touch();
