@@ -29,13 +29,11 @@
  *   fire(), swapBomb(), setCreepPaused(paused) (tutorial: freezes creep and the
  *   surge clock; moving, aiming, firing, popping and knock-back still work).
  *
- * EVENTS (on(name, cb) returns unsubscribe): see ArenaEvents in types.ts —
- *   shoot, stick, pop, shatter, miss, creepSurge, dangerChanged, swap,
+ * EVENTS (on(name, cb) returns unsubscribe; payloads: ArenaEvents in types.ts):
+ *   shoot, stick, pop, shatter, miss (deflected: true = a non-popping shot that
+ *   would sit on/inside the border bounced off), creepSurge, dangerChanged, swap,
  *   gameOver, won, scoreChanged, phaseChanged.
- *
- * RULES: every game rule + its tuned number is documented next to ARENA_CONFIG
- *   in arenaLayout.ts.
- *
+ * RULES + tuned numbers: next to ARENA_CONFIG in arenaLayout.ts.
  * PHASES: title -> playing -> gameOver | won   (newGame() from any phase)
  */
 
@@ -46,7 +44,7 @@ import { GroupFinder } from "./arenaMatch";
 import { ARENA_CONFIG, ARENA_MAX_DT, WORLD_HALF_EXTENT, generateField, levelParams, makeBomb } from "./arenaLayout";
 import { RayHit, SimBomb, SpatialGrid, raycastBombs, separateOne } from "./arenaPhysics";
 import {
-  animateFx, applyKnockback, borderGap, closestToBorder, dangerFromGap, dangerSectors, findOrphans, hasColor,
+  animateFx, applyKnockback, borderGap, centroid, closestToBorder, dangerFromGap, dangerSectors, findOrphans, hasColor,
   pickPresentColor, startShatter, stepCreep, stepShooter, updateMuzzle, wrapAngle,
 } from "./arenaSim";
 import {
@@ -127,8 +125,7 @@ export class ArenaEngine {
   getCreepSpeed(): number { return this.creepBase + this.surge * this.config.surgeStep; }
   isCreepPaused(): boolean { return this.creepPaused; }
   getScore(): number { return this.score; }
-  // Consecutive popping shots (0 after a non-popping stick or a miss)
-  getCombo(): number { return this.combo; }
+  getCombo(): number { return this.combo; } // consecutive popping shots
   getLevel(): number { return this.level; }
   getPhase(): ArenaPhase { return this.phase; }
   getRemaining(): number { return this.active.length; }
@@ -316,18 +313,27 @@ export class ArenaEngine {
     }
   }
 
-  // The shot touched `target`: seat it as a field bomb, then match.
+  // The shot touched `target`: seat it as a field bomb, then match. A shot
+  // that would NOT pop and whose edge would sit on/inside the border line
+  // deflects instead ("miss" with deflected: true): only creep loses games.
   private stick(target: SimBomb) {
     const s = this.shot!;
     this.shot = null;
     const b = makeBomb(this.nextId++, s.x, s.z, s.colorIndex, true);
     separateOne(b, this.active, this.config.bombRadius, 4);
-    this.bombs.push(b);
     this.active.push(b);
-    this.events.emit("stick", { id: b.id, x: b.x, z: b.z, colorIndex: b.colorIndex, hitId: target.id });
     this.grid.build(this.active);
     const group = this.finder.group(this.active, this.grid, this.active.length - 1, this.link, true);
-    if (group.length >= this.config.minMatch) this.pop(group.map((i) => this.active[i]));
+    const pops = group.length >= this.config.minMatch;
+    if (!pops && borderGap(b, this.config) <= 0) {
+      this.active.pop();
+      this.combo = 0;
+      this.events.emit("miss", { x: b.x, z: b.z, deflected: true });
+      return;
+    }
+    this.bombs.push(b);
+    this.events.emit("stick", { id: b.id, x: b.x, z: b.z, colorIndex: b.colorIndex, hitId: target.id });
+    if (pops) this.pop(group.map((i) => this.active[i]));
     else this.combo = 0;
   }
 
@@ -348,11 +354,7 @@ export class ArenaEngine {
     const gained = base * Math.min(this.combo, MAX_COMBO_MULTIPLIER);
     this.score += gained;
 
-    const centre = { x: 0, z: 0 };
-    for (const p of popped) {
-      centre.x += p.x / popped.length;
-      centre.z += p.z / popped.length;
-    }
+    const centre = centroid(popped);
     applyKnockback(this.active, c, centre, popped.length, popped.length + shattered.length);
 
     this.events.emit("pop", { bombs: popped.map(fx), score: gained, combo: this.combo, centre });

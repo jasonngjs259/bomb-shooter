@@ -20,7 +20,9 @@ import type { ArenaConfig } from "./types";
  *            so the field compresses into a wall; circles never overlap
  *            (4 relaxation passes per update). Idle L1 loss: ~66-73 s.
  *   Lose     any idle bomb with dist - radius <= arenaRadius -> gameOver.
- *            This includes a shot that sticks inside the border and does not pop.
+ *            Only creep loses: a shot that would stick on/inside the border
+            without popping deflects instead ("miss", deflected: true,
+            combo reset).
  *   Move     3 u/s top speed, accel 24 / decel 30 u/s^2, centre clamped to
  *            arenaRadius - 0.4 (sliding along the border).
  *   Shoot    fire() needs phase "playing", no shot in flight and the 0.25 s

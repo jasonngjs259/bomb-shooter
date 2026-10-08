@@ -270,6 +270,50 @@ function aimbot(seed: number, human = false, level = 1): BotResult {
   ok("won when the field is empty", `score ${e.getScore()}`);
 }
 
+// ---- 6b. Deflect: a non-popping shot that would stick inside the border ----
+{
+  let checked = 0;
+  for (const seed of [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]) {
+    const e = make(seed, { ringInner: 7.1, ringOuter: 8.1, bombCount: 30 });
+    e.newGame();
+    e.setCreepPaused(true);
+    run(e, 0.5); // let the tight test field settle (it can relax over the line)
+    if (e.getPhase() !== "playing") continue;
+    const c = e.getConfig();
+    let target: ArenaBomb | null = null;
+    for (const b of idle(e)) {
+      e.aimAt(b.x, b.z);
+      const ray = e.getAimRay();
+      if (ray.landing && ray.wouldPopIds.length === 0 && radial(ray.landing) - c.bombRadius <= c.arenaRadius) {
+        target = b;
+        break;
+      }
+    }
+    if (!target) continue;
+    const remaining = e.getRemaining();
+    const ids = new Set(e.getBombs().map((b) => b.id));
+    let deflected = false;
+    let lost = false;
+    let stuckGap = Infinity;
+    e.on("miss", (m) => (deflected = m.deflected === true));
+    e.on("stick", (st) => (stuckGap = Math.hypot(st.x, st.z) - c.bombRadius - c.arenaRadius));
+    e.on("gameOver", () => (lost = true));
+    assert(e.fire(), "deflect: fired");
+    for (let i = 0; i < 120 && e.getShot(); i++) e.update(DT);
+    assert(!lost && e.getPhase() === "playing", `seed ${seed}: a shot near the border never ends the game`);
+    if (!deflected) {
+      // separation pushed it clear of the border: a normal stick is fine
+      assert(stuckGap > 0, `seed ${seed}: shot either deflects or sticks outside the border`);
+      continue;
+    }
+    assert(e.getRemaining() === remaining && e.getCombo() === 0, "deflected shot does not join the field");
+    assert(e.getBombs().every((b) => ids.has(b.id)), "no new bomb added");
+    checked++;
+  }
+  assert(checked >= 2, `deflect scenario found (${checked})`);
+  ok("non-popping shot inside the border deflects (miss.deflected), only creep loses", `${checked} seeds`);
+}
+
 // ---- 7. Perf: 150 bombs --------------------------------------------------------
 {
   const e = make(99);

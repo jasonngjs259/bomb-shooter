@@ -84,6 +84,15 @@ export function animateFx(bombs: SimBomb[], c: ArenaConfig, dt: number) {
 }
 
 // Gap from a bomb's edge to the border line (<= 0 = touching / crossed).
+export const centroid = (bombs: readonly SimBomb[]) => {
+  const c = { x: 0, z: 0 };
+  for (const b of bombs) {
+    c.x += b.x / bombs.length;
+    c.z += b.z / bombs.length;
+  }
+  return c;
+};
+
 export const borderGap = (b: SimBomb, c: ArenaConfig) => Math.hypot(b.x, b.z) - c.bombRadius - c.arenaRadius;
 
 export const dangerFromGap = (gap: number, c: ArenaConfig) =>
