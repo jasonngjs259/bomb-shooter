@@ -152,8 +152,8 @@ export class CharacterAnimator {
   die() {
     if (this.mode === "dead") return;
     this.mode = "dead";
-    this.hold = 0.15; // hit-stop, then an 80 ms crossfade
-    this.fadeDur = 0.08;
+    this.hold = 0.15; // hit-stop, then a 160 ms crossfade (80 popped the aimed arm > 20 deg / frame)
+    this.fadeDur = 0.16;
     this.fullW = 0;
     this.death?.reset().setEffectiveWeight(0).play();
   }

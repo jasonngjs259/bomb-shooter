@@ -7,8 +7,11 @@
 //   breathing; chest + upper-arm pitch to the aim; head look; then a CCD
 //   pass on the upper arm and the hand so the barrel lies on the laser's
 //   first segment; finally the swap reach and the fire recoil.
-// Bones the passes touch are restored to rest before each mixer update, so
-// nothing accumulates when a clip doesn't key them.
+// Bones the passes touch are put back to the mixer's last output before
+// each mixer update (capture() saves it right after the update), so nothing
+// accumulates. Not to the bind pose: the mixer only writes a bone when its
+// blended value changed, so a held pose (a clamped death clip, a constant
+// aim-pose key) would otherwise snap back to bind.
 
 import { Object3D, Quaternion, Vector3 } from "three";
 import { DEG, wrapAngle } from "../../../arena/arenaMath";
@@ -36,7 +39,7 @@ const CCD_MAX = 20 * DEG;
 const RELAX_DROP = 35 * DEG;
 
 export class Posture {
-  private readonly rest: { bone: Object3D; q: Quaternion; p: Vector3 }[] = [];
+  private readonly rest: { bone: Object3D; q: Quaternion; p: Vector3; mq: Quaternion; mp: Vector3 }[] = [];
   private readonly spine: Object3D[];
   private readonly chestFwd = new Vector3(); // chest-local dir = root forward at the aim pose
   private readonly tipL = new Vector3(); // ankle in lower-leg space
@@ -53,7 +56,7 @@ export class Posture {
 
   constructor(private readonly model: Object3D, private readonly b: Bones, private readonly blaster: Blaster, readonly state: PostureState) {
     const keep = (o: Object3D | null) => {
-      if (o) this.rest.push({ bone: o, q: o.quaternion.clone(), p: o.position.clone() });
+      if (o) this.rest.push({ bone: o, q: o.quaternion.clone(), p: o.position.clone(), mq: o.quaternion.clone(), mp: o.position.clone() });
     };
     for (const role of Object.keys(b) as BoneRole[]) if (role !== "footL" && role !== "footR") keep(b[role]);
     this.spine = [b.spine, b.chest, b.upperChest].filter((o): o is Object3D => o !== null);
@@ -71,10 +74,24 @@ export class Posture {
     tip(this.b.lowerLegR, this.b.footR, this.tipR);
   }
 
-  restore() {
+  // Back to the last mixer output (see the header). bind: the rest pose
+  // instead (after calibration / a reset).
+  restore(bind = false) {
     for (const r of this.rest) {
-      r.bone.quaternion.copy(r.q);
-      r.bone.position.copy(r.p);
+      if (bind) {
+        r.mq.copy(r.q);
+        r.mp.copy(r.p);
+      }
+      r.bone.quaternion.copy(r.mq);
+      r.bone.position.copy(r.mp);
+    }
+  }
+
+  // Right after mixer.update: remember its output for restore().
+  capture() {
+    for (const r of this.rest) {
+      r.mq.copy(r.bone.quaternion);
+      r.mp.copy(r.bone.position);
     }
   }
 

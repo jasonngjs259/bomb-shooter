@@ -144,7 +144,11 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
     }
   }, [engine]);
   const onStartKey = useCallback(() => startGame(), [startGame]);
-  const { gesture, showAimGuide } = useAimInput({ engine, layout, screenToBoard, onStart: onStartKey });
+  // no mouse aiming under the pause / settings / title menus
+  const aimBlocked = useRef(false);
+  aimBlocked.current = paused || settingsOpen || menu;
+  const isAimBlocked = useCallback(() => aimBlocked.current, []);
+  const { gesture, showAimGuide } = useAimInput({ engine, layout, screenToBoard, onStart: onStartKey, blocked: isAimBlocked });
 
   // Title keys: Left/Right choose a mode, 1 / 2 play Arena / Classic
   useEffect(() => {

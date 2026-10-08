@@ -201,7 +201,7 @@ async function characterRun() {
     bones.forEach((b, i) => {
       b.getWorldQuaternion(q).premultiply(rootQ);
       const step = (q.angleTo(prevQ[i]) * 180) / Math.PI;
-      if (stats.frames > 2 && ch.animator.mode === "play" && label !== "win" && step > stats.maxPop) {
+      if (stats.frames > 2 && ch.animator.mode === "play" && label !== "win" && label !== "lose" && step > stats.maxPop) {
         stats.maxPop = step;
         stats.popAt = `${b.name} in ${label}`;
       }
@@ -211,7 +211,7 @@ async function characterRun() {
     // foot sliding: horizontal drift of the left foot while planted (ankle
     // bone within 2 cm of its lowest height), after 0.5 s in a phase
     foot.getWorldPosition(footW);
-    if (footW.y < 0.045 && phaseT > 0.5) {
+    if (footW.y < 0.045 && phaseT > 0.5 && label !== "win" && label !== "lose") {
       if (plantPrev) plantDrift = Math.max(plantDrift, Math.hypot(footW.x - plantPrev.x, footW.z - plantPrev.z));
       else plantPrev = footW.clone();
     } else if (plantPrev) {
@@ -277,13 +277,47 @@ async function characterRun() {
   world.playing = false;
   for (let i = 0; i < 180; i++) frame(false);
   assert(ch.animator.mode === "win" && ch.animator.fullW === 1, "win clip took over");
-  // death on the next level
+  label = "lose";
+  // death on the next level, through the real lose sequence (fast creep,
+  // FX timing, hit-stop): he falls, stays down for 4 s, and no bone jumps
   world.restart();
   engine.newGame();
   world.playing = true;
   for (let i = 0; i < 30; i++) frame(false);
-  ch.lose(engine.getShooter().x + 2, engine.getShooter().z);
-  for (let i = 0; i < 120; i++) frame(false);
+  (engine as unknown as { creepBase: number }).creepBase = 3;
+  engine.setCreepPaused(false);
+  for (let i = 0; i < 600 && engine.getPhase() === "playing"; i++) frame(false);
+  assert(engine.getPhase() === "gameOver", "character session lost");
+  world.playing = false;
+  // the hit-stop holds the sim for 150 ms of real time; headless frames are
+  // far faster than that, so let it pass
+  for (const until = Date.now() + 200; Date.now() < until; );
+  const hipsBone = bones.find((b) => b.name === "Hips")!;
+  const hipsW = new Vector3();
+  const wq = bones.map((b) => b.getWorldQuaternion(new Quaternion()));
+  let loseStep = 0;
+  let loseAt = "";
+  let lowFrom = -1;
+  let maxHipsAfter = 0;
+  for (let i = 0; i < Math.round(6 * 60); i++) {
+    frame(false);
+    bones.forEach((b, k) => {
+      b.getWorldQuaternion(q);
+      const st = (q.angleTo(wq[k]) * 180) / Math.PI;
+      if (st > loseStep) {
+        loseStep = st;
+        loseAt = `${b.name} @${(i / 60).toFixed(2)}s`;
+      }
+      wq[k].copy(q);
+    });
+    const hy = hipsBone.getWorldPosition(hipsW).y;
+    if (lowFrom < 0 && hy < 0.2) lowFrom = i; // landed
+    if (lowFrom >= 0) maxHipsAfter = Math.max(maxHipsAfter, hy);
+  }
+  const lowFor = lowFrom < 0 ? 0 : (Math.round(6 * 60) - lowFrom) / 60;
+  assert(lowFor >= 4 && maxHipsAfter < 0.3, `dead: hips stay below 0.3 for ${lowFor.toFixed(1)} s (max ${maxHipsAfter.toFixed(2)})`);
+  assert(loseStep <= 20, `lose sequence: max bone step ${loseStep.toFixed(1)} deg / frame (<= 20, ${loseAt})`);
+  console.log(`  ok  character death: down after ${(lowFrom / 60).toFixed(2)} s, hips max ${maxHipsAfter.toFixed(2)} for ${lowFor.toFixed(1)} s, max bone step ${loseStep.toFixed(1)} deg (${loseAt})`);
   assert(ch.animator.mode === "dead" && ch.animator.fullW === 1, "death clip took over");
 
   assert(!stats.nan, "no NaN in any bone");

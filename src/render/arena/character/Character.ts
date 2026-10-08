@@ -60,6 +60,7 @@ export class Character implements Avatar {
   private readonly dropVel = new Vector3();
   private readonly combatMuzzle = new Vector3(0.88, 1.1, 0.12);
   private lastFrame: AvatarFrame | null = null;
+  private loseYaw = 0;
   // per-frame inputs, reused (no allocation in update)
   private readonly animIn: AnimInput = { dt: 0, speed: 0, theta: 0, step: 0, stepRate: 1.4 };
   private readonly driveIn: PostureDrive = {
@@ -113,7 +114,7 @@ export class Character implements Avatar {
     this.posture.calibrate();
     pose.stopAllAction();
     pose.uncacheRoot(scene);
-    this.posture.restore();
+    this.posture.restore(true);
   }
 
   get cradle() { return this.blaster.cradle; }
@@ -142,7 +143,7 @@ export class Character implements Avatar {
     const len = Math.hypot(dx, dz) || 1;
     this.slideDirX = dx / len;
     this.slideDirZ = dz / len;
-    this.legsYaw = Math.atan2(-dz, -dx); // face the blast, fall away from it
+    this.loseYaw = Math.atan2(-dz, -dx); // turn to face the blast, fall away from it
     this.animator.die();
   }
   win() {
@@ -152,6 +153,7 @@ export class Character implements Avatar {
   reset() {
     this.animator.reset();
     this.state.reset();
+    this.posture.restore(true);
     this.losing = -1;
     this.winning = false;
     this.slide.x = this.slide.v = 0;
@@ -189,6 +191,9 @@ export class Character implements Avatar {
     // placement (+ the lose slide away from the blast)
     if (this.losing >= 0) {
       this.losing += dt;
+      // turn (not snap) to face the blast; at most 360 deg/s
+      const turn = angleDiff(this.legsYaw, expDampAngle(this.legsYaw, this.loseYaw, 14, dt));
+      this.legsYaw = wrapAngle(this.legsYaw + clamp(turn, -2 * Math.PI * dt, 2 * Math.PI * dt));
       cdStep(this.slide, this.losing > 0.15 ? SLIDE : 0, 6, dt);
     }
     this.group.position.set(f.x + this.slideDirX * this.slide.x, 0, f.z + this.slideDirZ * this.slide.x);
@@ -199,6 +204,7 @@ export class Character implements Avatar {
     a.speed = speed;
     a.theta = this.theta;
     this.animator.update(a);
+    this.posture.capture();
     const d = this.driveIn;
     d.dt = dt; d.t = f.t; d.speed = speed; d.aF = f.ax * fx + f.az * fz; d.aR = -f.ax * fz + f.az * fx;
     d.yawRate = playing ? f.yawRate : 0; d.idleTime = f.idleTime; d.still = f.still; d.low = f.low;

@@ -36,6 +36,8 @@ import { Stickman } from "./Stickman";
 export interface Threat { x: number; y: number; rot: number; d: number; angle: number; behind: boolean }
 export interface RadarRect { x: number; y: number; size: number } // css px, top-left origin
 export interface Box { x: number; y: number; w: number; h: number } // css px
+const BEHIND = (100 * Math.PI) / 180; // threat arrows: behind the player beyond this
+
 export type CharacterSource = () => Promise<ArrayBuffer>;
 export type AvatarKind = "loading" | "character" | "stickman";
 
@@ -304,8 +306,12 @@ export class ArenaWorld {
       const px = Math.cos(c.a) * 6.5;
       const pz = Math.sin(c.a) * 6.5;
       this.pv.set(px, 0.3, pz).project(camera);
-      const behind = this.pv.z > 1;
-      if (!behind && Math.abs(this.pv.x) < 0.95 && Math.abs(this.pv.y) < 0.95) continue;
+      // "behind" = more than 100 deg off the player's facing (not the camera
+      // plane, which the pulled-back danger camera can put in front of it)
+      const rel = angleDiff(s.yaw, Math.atan2(pz - s.z, px - s.x));
+      const behind = Math.abs(rel) > BEHIND;
+      const offView = this.pv.z > 1 || Math.abs(this.pv.x) >= 0.95 || Math.abs(this.pv.y) >= 0.95;
+      if (!behind && !offView) continue;
       const sx = (this.pv.x * 0.5 + 0.5) * this.W; // projected point (valid in front)
       const sy = (-this.pv.y * 0.5 + 0.5) * this.H;
       // on-screen direction to the threat from the view centre (0 = up,
@@ -314,7 +320,8 @@ export class ArenaWorld {
       // lower ring and never among the bombs on the horizon
       this.mv.set(px, 0.3, pz).applyMatrix4(camera.matrixWorldInverse);
       let ang = Math.atan2(this.mv.x, this.mv.y);
-      if (behind || Math.hypot(this.mv.x, this.mv.y) < 1e-4) ang = angleDiff(this.chase.yaw, Math.atan2(pz - s.z, px - s.x));
+      if (behind || this.pv.z > 1 || Math.hypot(this.mv.x, this.mv.y) < 1e-4) ang = angleDiff(this.chase.yaw, Math.atan2(pz - s.z, px - s.x));
+      if (behind) ang = Math.sign(ang || 1) * Math.max(Math.abs(ang), BEHIND); // always the lower edge
       const t = this.threats[n++];
       t.x = cx + Math.sin(ang) * Math.max(0, r.w / 2 - 28);
       t.y = cy - Math.cos(ang) * Math.max(0, r.h / 2 - 28);
@@ -325,7 +332,7 @@ export class ArenaWorld {
         }
       }
       // point outward: from the arrow towards the threat's screen position
-      const rot = behind ? ang : Math.atan2(sx - t.x, -(sy - t.y));
+      const rot = behind || this.pv.z > 1 ? ang : Math.atan2(sx - t.x, -(sy - t.y));
       t.rot = (rot * 180) / Math.PI;
       t.d = c.d;
       t.behind = behind;
