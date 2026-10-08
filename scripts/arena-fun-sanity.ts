@@ -29,7 +29,7 @@ const R = 0, Y = 1, B = 2; // colour indices
   const sig = rows.map((d) => `${d.bombs}/${d.creepBase.toFixed(4)}/a${d.armored}t${d.ticking}r${d.rollers}x${d.rollersLive}/${d.rotation.join(":")}/${d.doubleRing ? "D" : "-"}/${d.boss ? `B${d.boss.mk}` : "-"}/${d.par}`);
   console.log(`  level table:\n    ${sig.map((s, i) => `L${i + 1} ${s}`).join("\n    ")}`);
   const b = [3, 6, 9, 12].map((lv) => levelDef(ARENA_CONFIG, lv).boss!);
-  assert(b.map((x) => `${x.mk}:${x.coreHp}:${x.shield}:${x.orbit}:${x.regrow}`).join() === "1:12:8:36:7,2:12:10:48:8,3:14:12:60:8,4:16:12:64:9", "boss Mk table (tuned)");
+  assert(b.map((x) => `${x.mk}:${x.coreHp}:${x.shield}:${x.orbit}:${x.regrow}`).join() === "1:20:8:36:7,2:24:8:42:8,3:26:10:48:8,4:28:12:54:9", "boss Mk table (tuned)");
   const l10 = levelDef(ARENA_CONFIG, 10), l11 = levelDef(ARENA_CONFIG, 11);
   assert(l10.bombs === 138 && l10.rotation[0] === 5 && !l10.doubleRing && l11.doubleRing && l11.rotation.join() === "5,-3", "L10+ twist deck");
   ok("level table, unlock schedule, boss Mk table, L10+ generator");
@@ -317,7 +317,7 @@ const R = 0, Y = 1, B = 2; // colour indices
 // ---- 7. Ticking + lurch -----------------------------------------------------------
 {
   const e = make(7, { creepSpeed: 0, surgeStep: 0 });
-  e.newGame({ level: 4, levelDef: def(4, { rotation: [0, 0], creepBase: 0 }) });
+  e.newGame({ level: 4, levelDef: def(4, { rotation: [0, 0], creepBase: 0, tickTimer: 20 }) });
   const [tick, , gapBomb, tick2] = arrange(e, [
     { x: 0, z: -9.5, c: R, kind: "ticking" }, { x: 5, z: 9, c: Y }, { x: 7.75, z: 0, c: B }, { x: -9, z: 0, c: Y, kind: "ticking" },
   ], Y);
@@ -341,7 +341,7 @@ const R = 0, Y = 1, B = 2; // colour indices
   assert(!internals(e).sys.stars.read().flawless && e.getCombo() === 0, "lurch breaks FLAWLESS and resets combo");
   // the gap-0.7 case: lurch 0.1, never game over
   const e2 = make(8, { creepSpeed: 0, surgeStep: 0 });
-  e2.newGame({ level: 4, levelDef: def(4, { rotation: [0, 0], creepBase: 0 }) });
+  e2.newGame({ level: 4, levelDef: def(4, { rotation: [0, 0], creepBase: 0, tickTimer: 20 }) });
   arrange(e2, [{ x: 0, z: -9.5, c: R, kind: "ticking" }, { x: 7.15, z: 0, c: B }, { x: 5, z: 9, c: Y }], Y);
   const l2 = capture(e2, "lurch");
   e2.debugArmTicking();

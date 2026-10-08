@@ -126,6 +126,7 @@ export const ARENA_FUN = {
     cooldown: 1.6,
     buffer: 0.2,
     minInput: 0.3,
+    smartRange: 6, // no-input roll: dodge perpendicular to a roller approaching within this
     exitSpeed: 3,
   },
   // WALL PUSH: a non-popping shot that would stick within deflectMargin of the
@@ -159,6 +160,8 @@ export const ARENA_FUN = {
     p2At: 0.6,
     p3At: 0.25,
     p2OrbitScale: 1.35,
+    popSlowScale: 0.4, // orbit speed x this for popSlowTime s after a shield pop (clear window)
+    popSlowTime: 1.5,
     shiftInvuln: 1.2,
     shiftKick: 1.5, // outward kick speed (decays at knockbackDamping) ~ 0.5 w
     spitEvery: 12,

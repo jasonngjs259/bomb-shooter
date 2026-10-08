@@ -2,7 +2,8 @@
 //   Core r 1.35 at distance 11.5 in a +-35 deg ring gap, creeping 0.018 w/s
 //   (x3 in phase 3), riding the ring rotation. Shield: N bombs orbiting at
 //   r 2.3; a matching (or wild / rainbow) shot pops one, any other colour
-//   deflects; one regrows every `regrow` s in phases 1-2. HP 10 / 14 / 18;
+//   deflects; one regrows every `regrow` s in phases 1-2 (the timer restarts on
+//   every pop, and the orbit slows to 40% for 1.5 s after a pop: a clear window). HP 10 / 14 / 18;
 //   1 damage per shot, 2 for the weak colour (cycles every 6 s, telegraphed
 //   1 s ahead). Phase 2 at <= 60% (orbit x1.35 reversed; Mk I spits 3 bombs
 //   onto the ring every 12 s, Mk II+ launches a roller every 9 s), phase 3 at
@@ -30,6 +31,7 @@ export class Boss {
   private spitT = 0;
   private rollerT = 0;
   private invulnT = 0;
+  private slowT = 0; // clear window after a shield pop: the orbit slows down
   private slots: (BossShieldBomb | null)[] = [];
 
   constructor(private readonly core: ArenaCore) {}
@@ -49,7 +51,7 @@ export class Boss {
     this.angle = angle;
     this.offset = 0;
     this.dir = 1;
-    this.regrowT = this.spitT = this.rollerT = this.invulnT = 0;
+    this.regrowT = this.spitT = this.rollerT = this.invulnT = this.slowT = 0;
     const weak = core.pickColor();
     this.state = {
       mk: d.mk, id: core.nextId++, x: 0, z: 0, r: b.coreR, hp: d.coreHp, maxHp: d.coreHp, phase: 1,
@@ -96,7 +98,8 @@ export class Boss {
     // Creep + ride the rotation + orbit
     this.dist -= b.creep * (st.phase === 3 ? b.p3CreepScale : 1) * run;
     this.angle += core.sys.ring.omega[0] * dt;
-    const orbit = d.orbit * DEG * (st.phase >= 2 ? b.p2OrbitScale : 1) * this.dir;
+    if (!core.worldPaused) this.slowT = Math.max(0, this.slowT - dt);
+    const orbit = d.orbit * DEG * (st.phase >= 2 ? b.p2OrbitScale : 1) * (this.slowT > 0 ? b.popSlowScale : 1) * this.dir;
     st.orbitSpeed = core.worldPaused ? 0 : orbit;
     this.offset += orbit * run;
     // Regrow (phases 1-2)
@@ -184,7 +187,7 @@ export class Boss {
   private kill() {
     const core = this.core, st = this.state!, b = core.fun.boss;
     const bonus = b.killScorePerMk * st.mk;
-    core.emit("bossDefeated", { mk: st.mk, score: bonus, time: core.time });
+    core.emit("bossDefeated", { mk: st.mk, score: bonus, time: core.playTime });
     core.timeScale.trigger(b.hitStopScale, b.hitStop, 0);
     core.emit("slowMo", { scale: b.hitStopScale, realDuration: b.hitStop, ramp: 0 });
     for (let i = 0; i < this.slots.length; i++) this.slots[i] = null;
@@ -206,6 +209,8 @@ export class Boss {
     const core = this.core, s = this.slots[i]!;
     this.slots[i] = null;
     this.syncShield();
+    this.regrowT = 0; // the hole stays open a full regrow period
+    this.slowT = core.fun.boss.popSlowTime;
     core.emit("bossShieldPop", { id: s.id, x: s.x, z: s.z, colorIndex: s.colorIndex, remaining: this.state!.shield.length });
     if (!scored) return;
     core.bumpCombo();

@@ -5,8 +5,8 @@
 //   dials  - ticking bombs: a camera-facing countdown ring (lit arc = time
 //            left, white -> danger red at <= 5 s, 2 Hz blink) plus the digits
 //            in the shared AtlasSprites batch;
-//   treads - roller bombs (in the wall and rolling): a dark tyre band with 6
-//            studs around the axle, glowing while telegraphing.
+//   treads - roller bombs (in the wall and rolling): a slim dark tyre band with
+//            8 spiky studs around the axle, glowing orange only while telegraphing.
 // World units. No allocation per frame.
 
 import {
@@ -65,16 +65,19 @@ function cageGeometry() {
   return g;
 }
 
+// A slim dark tyre hugging the equator + 8 spiky studs pointing out: reads as
+// a spiked rolling bomb from any angle (the bomb colour stays dominant; an
+// edge-on view shows a thin dark seam, not a pale stripe).
 function treadGeometry() {
-  const band = new TorusGeometry(R * 1.0, 0.11, 6, 24); // axis = local Z
+  const band = new TorusGeometry(R * 1.01, 0.06, 6, 28); // axis = local Z
   band.deleteAttribute("uv");
   const parts: BufferGeometry[] = [ni(band)];
-  for (let k = 0; k < 6; k++) {
-    const a = (k / 6) * Math.PI * 2;
-    const s = new CylinderGeometry(0.05, 0.065, 0.09, 6);
-    s.rotateZ(Math.PI / 2);
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    const s = new CylinderGeometry(0.0, 0.07, 0.17, 6); // cone, tip outward
+    s.rotateZ(-Math.PI / 2);
     s.rotateZ(a);
-    s.translate(Math.cos(a) * (R + 0.08), Math.sin(a) * (R + 0.08), 0);
+    s.translate(Math.cos(a) * (R + 0.1), Math.sin(a) * (R + 0.1), 0);
     s.deleteAttribute("uv");
     parts.push(ni(s));
   }
@@ -163,7 +166,7 @@ export class BombDecor {
     this.cages.instanceColor = new InstancedBufferAttribute(new Float32Array(CAGE_CAP * 3), 3).setUsage(DynamicDrawUsage);
     this.treads = new InstancedMesh(
       treadGeometry(),
-      glowStd({ color: "#2A2340", metalness: 0.5, roughness: 0.6 }, "arena-tread", 2.4),
+      glowStd({ color: "#17121F", metalness: 0.6, roughness: 0.45 }, "arena-tread", 2.4),
       TREAD_CAP,
     );
     this.treads.instanceColor = new InstancedBufferAttribute(new Float32Array(TREAD_CAP * 3), 3).setUsage(DynamicDrawUsage);

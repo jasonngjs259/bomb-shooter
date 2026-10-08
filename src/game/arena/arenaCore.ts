@@ -88,7 +88,9 @@ export class ArenaCore {
   score = 0;
   combo = 0;
   bestCombo = 0;
-  time = 0; // s of play since newGame
+  time = 0; // s of simulation since newGame (every update while playing)
+  playTime = 0; // par / FAST clock: only while the creep runs and the clock isn't paused (Freeze counts)
+  clockPaused = false; // setClockPaused: UI gates (CLICK TO PLAY, menus) on top of creepPaused
   worldTime = 0; // play time with the world running (not frozen, creep not paused)
   creepTime = 0; // drives surges (= worldTime)
   creepBase = 0;

@@ -7,20 +7,23 @@
 //  1   60  / 0.0298          pickups: rainbow, freeze              -                                              -           60
 //  2   75  / 0.0322          armored x5, FEVER                     pickups                                        -           75
 //  3   BOSS Mk I ring 48     boss, mega pickup                     armored x4                                     -           90
-//  4   90  / 0.035           ticking x2 (20 s), rotation, lightning armored 6                                     +4 deg/s    95
+//  4   90  / 0.035           ticking x2 (24 s [20 s]), rotation, lightning  armored 5 [6]                         +4 deg/s    95
 //  5   102 / 0.038           rollers x3 (1 live), ROLL             armored 6, ticking 2                           -          100
 //  6   BOSS Mk II ring 60    boss rollers in phase 2               armored 6, ticking 2 (20 s), creep 0.038       -3 deg/s   110
 //  7   114 / 0.041           double ring                           armored 8, ticking 3 (18 s), rollers 3         static     115
 //  8   126 / 0.044           counter-rotating double ring          armored 10, ticking 3, rollers 4 (2 live)      +5/-3      120
 //  9   BOSS Mk III ring 72   creep 0.034 [0.044]                   armored 4 [8], ticking 1 [2] (18 s)            +4         125
-//  10+ k = L-10: bombs min(150, 138+12k), creep min(0.060, 0.047+0.003k), armored min(16, 10+k);
-//      L%3==1 rotating 5 deg/s, L%3==2 double ring +5/-3;
-//      L%3==0 BOSS Mk L/3: creep 0.032+0.001(n-4) [previous level's], armored = previous x0.6 [x0.7],
+//  10+ k = L-10: bombs min(150, 138+12k) (aiming at ~75-85% bot wins now that pushes save near-border singles):
+//      L%3==1 rotating 5 deg/s, creep min(0.075, 0.062+0.003k), armored min(16, 14+k);
+//      L%3==2 double ring +5/-3, creep min(0.072, 0.056+0.003k), armored min(16, 12+k)
+//      [spec: creep min(0.060, 0.047+0.003k), armored min(16, 10+k)];
+//      L%3==0 BOSS Mk L/3: creep 0.032+0.001(n-4) [previous level's], armored = previous x0.45 [x0.7],
 //      ticking 1 [previous x0.7], previous level's rotation.
 //  (L6-L8 and the L10+ deck went back to the spec numbers once the wall push
 //  made near-border singles solvable; bosses stay tuned.)
-//  Boss Mk n (bossDef): HP 12 + 2 max(0, n-2) = 12/12/14/16 [10+4(n-1) = 10/14/18/22]; shield min(12, 6+2n) [cap 14];
-//      orbit min(64, 24+12n) deg/s [cap 80]; regrow Mk I 7 s, Mk II-III 8 s, IV+ 9 s [max(3.5, 8-n) = 7/6/5/4].
+//  Boss Mk n (bossDef): HP 20 / 24 / 26 / 28 ... (+2 per Mk) [10+4(n-1) = 10/14/18/22] (the post-pop clear window
+//      makes hits land, so HP carries the fight length); shield max(8, min(12, 4+2n)) = 8/8/10/12 [6+2n cap 14];
+//      orbit min(64, 30+6n) = 36/42/48/54 deg/s [24+12n cap 80]; regrow Mk I 7 s, Mk II-III 8 s, IV+ 9 s [max(3.5, 8-n) = 7/6/5/4].
 // Rotation sign: + = angle increasing from +x towards +z (clockwise seen from above with +z down).
 
 import type { ArenaConfig } from "./types";
@@ -54,7 +57,7 @@ export const LEVELS: readonly LevelRow[] = [
   row({ bombs: 60, creep: 0.035 * 0.85, par: 60 }),
   row({ bombs: 75, creep: 0.035 * 0.92, armored: 5, par: 75 }),
   row({ bombs: 48, creep: 0.0322, armored: 4, boss: 1, par: 90 }),
-  row({ bombs: 90, creep: 0.035, armored: 6, ticking: 2, rotation: [4, 4], par: 95 }),
+  row({ bombs: 90, creep: 0.035, armored: 5, ticking: 2, tickTimer: 24, rotation: [4, 4], par: 95 }),
   row({ bombs: 102, creep: 0.038, armored: 6, ticking: 2, rollers: 3, par: 100 }),
   row({ bombs: 60, creep: 0.038, armored: 6, ticking: 2, rotation: [-3, -3], boss: 2, par: 110 }),
   row({ bombs: 114, creep: 0.041, armored: 8, ticking: 3, tickTimer: 18, rollers: 3, doubleRing: true, par: 115 }),
@@ -68,14 +71,15 @@ function generatedRow(level: number): LevelRow {
     const prev = generatedRow(level - 1);
     return row({
       bombs: Math.min(100, 36 + 12 * n), creep: 0.032 + 0.001 * (n - 4), par: Math.min(150, 90 + 10 * (n - 1)), boss: n,
-      armored: Math.round(prev.armored * 0.6), ticking: 1, tickTimer: 16, rollersLive: 2, rotation: [prev.rotation[0], prev.rotation[0]],
+      armored: Math.round(prev.armored * 0.45), ticking: 1, tickTimer: 16, rollersLive: 2, rotation: [prev.rotation[0], prev.rotation[0]],
     });
   }
   const k = level - 10;
-  const deck = level % 3 === 1 ? { rotation: [5, 5] as [number, number] } : { rotation: [5, -3] as [number, number], doubleRing: true };
+  const rotating = level % 3 === 1;
+  const deck = rotating ? { rotation: [5, 5] as [number, number] } : { rotation: [5, -3] as [number, number], doubleRing: true };
   return row({
-    bombs: Math.min(150, 138 + 12 * k), creep: Math.min(0.06, 0.047 + 0.003 * k),
-    par: Math.min(150, 130 + 5 * k), armored: Math.min(16, 10 + k), ticking: Math.min(5, 4 + Math.floor(k / 2)), tickTimer: 16,
+    bombs: Math.min(150, 138 + 12 * k), creep: rotating ? Math.min(0.075, 0.062 + 0.003 * k) : Math.min(0.072, 0.056 + 0.003 * k),
+    par: Math.min(150, 130 + 5 * k), armored: Math.min(16, (rotating ? 14 : 12) + k), ticking: Math.min(5, 4 + Math.floor(k / 2)), tickTimer: 16,
     rollers: Math.min(6, 4 + Math.floor(k / 2)), rollersLive: 2, ...deck,
   });
 }
@@ -83,9 +87,9 @@ function generatedRow(level: number): LevelRow {
 export function bossDef(mk: number): BossDef {
   return {
     mk,
-    coreHp: 12 + 2 * Math.max(0, mk - 2),
-    shield: Math.min(12, 6 + 2 * mk),
-    orbit: Math.min(64, 24 + 12 * mk),
+    coreHp: 20 + 4 * Math.min(1, mk - 1) + 2 * Math.max(0, mk - 2),
+    shield: Math.max(8, Math.min(12, 4 + 2 * mk)),
+    orbit: Math.min(64, 30 + 6 * mk),
     regrow: mk === 1 ? 7 : mk <= 3 ? 8 : 9,
     ring: Math.min(100, 36 + 12 * mk),
   };

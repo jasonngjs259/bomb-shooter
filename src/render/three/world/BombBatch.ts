@@ -38,7 +38,9 @@ export const newDraw = (): BombDraw => ({
   colorIndex: 0, glow: 0.35, tint: 0, halo: 1, spark: 1, shadow: true,
 });
 
-// uIce (0..1): the Arena Freeze look, emissive -> #CFF4FF x0.5 (fun spec 2.1)
+// uIce (0..1): the Arena Freeze look. The bomb keeps its own saturated
+// diffuse + emissive colour (matching must stay readable); the ice is a
+// frosted fresnel rim (#CFF4FF) plus a faint cool sheen on the edge only.
 const patchBombMaterial = (m: Material, ice: { value: number }) => {
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uIce = ice;
@@ -49,11 +51,12 @@ const patchBombMaterial = (m: Material, ice: { value: number }) => {
       .replace("#include <common>", "#include <common>\nvarying vec2 vFx;\nuniform float uIce;")
       .replace(
         "#include <color_fragment>",
-        "#include <color_fragment>\ndiffuseColor.rgb = mix(mix(diffuseColor.rgb, vec3(0.72, 0.9, 1.0), uIce * 0.12), vec3(1.0), vFx.y);"
+        "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), vFx.y);"
       )
       .replace(
         "#include <emissivemap_fragment>",
-        "#include <emissivemap_fragment>\ntotalEmissiveRadiance = mix(vColor.rgb * vFx.x, vec3(0.81, 0.96, 1.0) * 0.4, uIce * 0.65) + vec3(vFx.y * 1.6);"
+        "#include <emissivemap_fragment>\nfloat iceRim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);\n" +
+          "totalEmissiveRadiance = vColor.rgb * vFx.x + vec3(0.81, 0.96, 1.0) * (iceRim * 1.1 + step(0.86, iceRim) * 0.6) * uIce + vec3(vFx.y * 1.6);"
       );
   };
   m.customProgramCacheKey = () => "bomb-fx";

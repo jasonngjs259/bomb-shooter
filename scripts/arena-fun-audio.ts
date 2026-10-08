@@ -278,7 +278,7 @@ console.log("- ticking (debugArmTicking) + lurch");
   await s.stepReal(3.2);
   const early = s.reqs.filter((q) => q.id === "tick" && q.delay === 0).length;
   ok(early >= 2 && early <= 5, `1 tick per game second while > 5 s (own cadence: ${early} in 3.2 s)`);
-  s.step(14);
+  s.step(s.e.getLevelDef().tickTimer - 6); // into the last 5 s
   ok(s.seen.has("tickingWarning") && has(s.after("tickingWarning"), "tick"), "tickingWarning -> tick");
   s.step(5);
   ok(has(s.after("tickingWarning"), "tickWarn", (q) => q.rate > 1), "last 2 s -> pitched tick_warning");

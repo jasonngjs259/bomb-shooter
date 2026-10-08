@@ -1,5 +1,7 @@
 // Dodge ROLL (unlocked L5) plus the player-hit state it interacts with.
 //   Roll: 3.0 w over 0.5 s, v(t) = 2D/T (1 - t/T), clamped to the arena;
+//   with no stick input it dodges smart (perpendicular to an incoming roller
+//   within 6 w, else sideways to the facing, towards open space);
 //   i-frames 0.04-0.42 s; cooldown 1.6 s from start; a roll pressed <= 0.2 s
 //   before it is ready (cooldown or stun) fires when ready; fire pressed
 //   during a roll fires at roll end; exits at 3 w/s.
@@ -53,8 +55,9 @@ export class RollSystem {
       z = core.input.z;
     }
     if (Math.hypot(x, z) <= r.minInput) {
-      x = -Math.cos(core.shooter.yaw);
-      z = -Math.sin(core.shooter.yaw);
+      this.smartDir(this.auto);
+      x = this.auto.x;
+      z = this.auto.z;
     }
     const len = Math.hypot(x, z);
     x /= len;
@@ -72,6 +75,50 @@ export class RollSystem {
     }
     return false;
   }
+
+  // No stick / keys: dodge smart. A roller approaching within smartRange ->
+  // perpendicular to its path; else sideways relative to the facing. Of the
+  // two sides, prefer the one that stays further from the border and from
+  // other rollers (ties alternate).
+  private smartDir(out: { x: number; z: number }) {
+    const core = this.core, s = core.shooter, r = core.fun.roll;
+    let threat: { x: number; z: number; dirX: number; dirZ: number } | null = null;
+    let best = r.smartRange;
+    for (const ro of core.sys.rollers.list) {
+      const dx = s.x - ro.x, dz = s.z - ro.z, d = Math.hypot(dx, dz);
+      if (d < best && ro.dirX * dx + ro.dirZ * dz > 0) {
+        best = d;
+        threat = ro;
+      }
+    }
+    let px: number, pz: number;
+    if (threat) {
+      px = -threat.dirZ;
+      pz = threat.dirX;
+    } else {
+      px = -Math.sin(s.yaw);
+      pz = Math.cos(s.yaw);
+    }
+    const lim = core.config.arenaRadius - core.config.shooterRadius;
+    const score = (sx: number, sz: number) => {
+      let ex = s.x + sx * r.distance, ez = s.z + sz * r.distance;
+      const d = Math.hypot(ex, ez);
+      if (d > lim) {
+        ex *= lim / d;
+        ez *= lim / d;
+      }
+      let v = -Math.hypot(ex, ez); // room from the border
+      for (const ro of core.sys.rollers.list) if (ro !== threat) v += Math.min(0, Math.hypot(ro.x - ex, ro.z - ez) - 2.5);
+      if (threat) v += Math.min(2, Math.abs((ex - threat.x) * -threat.dirZ + (ez - threat.z) * threat.dirX)); // off its line
+      return v;
+    };
+    const a = score(px, pz), b = score(-px, -pz);
+    const flip = Math.abs(a - b) < 0.05 ? (this.side = -this.side) < 0 : b > a;
+    out.x = flip ? -px : px;
+    out.z = flip ? -pz : pz;
+  }
+  private side = 1;
+  private readonly auto = { x: 0, z: 0 };
 
   // Can fire() go through now? If not, buffer the press when allowed.
   allowFire(): boolean {

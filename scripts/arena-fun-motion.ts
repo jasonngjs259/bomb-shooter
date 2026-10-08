@@ -102,15 +102,32 @@ const still = { creepSpeed: 0, surgeStep: 0 };
   until(e, () => ends.length > 1, 1);
   run(e, 1.7);
   e.setYaw(0);
-  const x0 = e.getShooter().x;
+  const p0 = { x: e.getShooter().x, z: e.getShooter().z };
   e.roll(0, 0);
   run(e, 0.6);
-  assert(e.getShooter().x < x0 - 2, "zero vector rolls backward (away from the aim)");
+  const moved = { x: e.getShooter().x - p0.x, z: e.getShooter().z - p0.z };
+  assert(Math.abs(moved.z) > 2 && Math.abs(moved.x) < 0.3, `no input, no roller: rolls sideways to the facing (${moved.x.toFixed(2)}, ${moved.z.toFixed(2)})`);
+  // head-on roller + a no-input roll: the smart default dodges off its line (an explicit backward roll along it gets hit)
+  const headOn = (dirX: number, dirZ: number) => {
+    const h = make(19, still);
+    h.newGame({ level: 5, levelDef: def(5, { creepBase: 0, rollers: 0 }) });
+    arrange(h, [{ x: 6, z: 8, c: Y }, { x: -6, z: 8, c: B }], Y);
+    h.setYaw(-Math.PI / 2); // facing the roller
+    const hit = capture(h, "playerHit");
+    internals(h).sys.rollers.spawn(9300, 0, -5.5, R);
+    const ro = h.getRollers()[0];
+    until(h, () => Math.hypot(ro.x - h.getShooter().x, ro.z - h.getShooter().z) <= 1.7, 5);
+    h.roll(dirX, dirZ);
+    run(h, 3);
+    return hit.length;
+  };
+  assert(headOn(0, 0) === 0, "head-on roller + no-input roll: no hit");
+  assert(headOn(0, 1) === 1, "control: rolling straight back along its path still gets hit");
   // locked before L5
   const l4 = make(15);
   l4.newGame({ level: 4 });
   assert(!l4.roll(1, 0) && l4.getRoll().state === "locked", "roll locked before L5");
-  ok("roll: 3.0 w / 0.5 s, i-frames 0.04-0.42, 1.6 s cooldown, 0.2 s buffer, fire buffered to roll end, backward default, locked < L5");
+  ok("roll: 3.0 w / 0.5 s, i-frames 0.04-0.42, 1.6 s cooldown, 0.2 s buffer, fire buffered to roll end, smart no-input dodge (head-on roller: no hit), locked < L5");
 }
 
 // ---- 3. Rotation, double ring, freeze ----------------------------------------------
@@ -170,7 +187,7 @@ const still = { creepSpeed: 0, surgeStep: 0 };
   const spawned = capture(e, "bossSpawned");
   e.newGame({ level: 3, levelDef: def(3, { creepBase: 0 }) });
   const b = e.getBoss()!;
-  assert(spawned[0]?.mk === 1 && b.hp === 12 && b.maxHp === 12 && b.shield.length === 8, "Mk I: HP 12 (tuned), shield 8");
+  assert(spawned[0]?.mk === 1 && b.hp === 20 && b.maxHp === 20 && b.shield.length === 8, "Mk I: HP 20 (tuned), shield 8");
   near(Math.hypot(b.x, b.z), 11.5, 1e-9, "core at 11.5");
   const ringA = e.getBombs().map((x) => Math.abs(wrap(ang(x) - ang(b))) * (180 / Math.PI));
   assert(Math.min(...ringA) > 28, `ring leaves a +-35 deg gap (closest ${Math.min(...ringA).toFixed(1)})`);
@@ -209,7 +226,7 @@ const still = { creepSpeed: 0, surgeStep: 0 };
   run(e, 0.3);
   fireAt(e, b.x, b.z);
   flushShots(e);
-  assert(hitsE.map((x) => x.damage).join() === "2,1" && b.hp === 9, `weak colour 2 damage, other 1 (${hitsE.map((x) => x.damage)})`);
+  assert(hitsE.map((x) => x.damage).join() === "2,1" && b.hp === 17, `weak colour 2 damage, other 1 (${hitsE.map((x) => x.damage)})`);
   assert(b.nextWeakColor !== b.weakColor && b.weakIn > 0 && b.weakIn <= 6, "weak colour cycle telegraphed (next + weakIn)");
   // phases
   const phases = capture(e, "bossPhase"), drops = capture(e, "pickupSpawned");
@@ -282,6 +299,35 @@ const still = { creepSpeed: 0, surgeStep: 0 };
   play(d);
   assert(d.getPhase() !== "won" || (ds[0] && !ds[0].flawless && ds[0].count <= 2), "FLAWLESS badge lost");
   ok("stars: CLEAR / FAST / FLAWLESS, clear bonus, newBest, best combo");
+}
+
+// ---- 5b. Par clock: only real play counts ---------------------------------------------
+{
+  const e = make(43, { colorCount: 1, earlyLevels: [{ bombs: 12, creepScale: 0.85 }] });
+  const stars = capture(e, "levelStars");
+  e.newGame({ level: 1 });
+  e.setCreepPaused(true); // intro sweep / tutorial / roll lesson
+  run(e, 10);
+  assert(e.getStarProgress().time === 0 && e.getPlayTime() === 0 && e.getTime() > 9.9, "creep paused: the par clock doesn't run");
+  e.setCreepPaused(false);
+  run(e, 5);
+  near(e.getStarProgress().time, 5, DT, "par clock runs in play");
+  e.setClockPaused(true); // UI gate (CLICK TO PLAY / overlay)
+  run(e, 3);
+  near(e.getPlayTime(), 5, DT, "setClockPaused stops it");
+  e.setClockPaused(false);
+  e.debugSpawnPickup("freeze", e.getShooter().x, e.getShooter().z);
+  run(e, 2);
+  near(e.getPlayTime(), 7, DT * 2, "Freeze time counts");
+  for (let i = 0; i < 60 * 60 && e.getPhase() === "playing"; i++) {
+    if (!e.getShot() && e.getShooter().cooldown <= 0) {
+      const t = e.getBombs().find((b) => b.state === "idle");
+      if (t) fireAt(e, t.x, t.z);
+    }
+    e.update(DT);
+  }
+  assert(stars[0] && Math.abs(stars[0].time - e.getPlayTime()) < 1e-9 && stars[0].time < e.getTime() - 12 && stars[0].fast, "levelStars.time / FAST use the par clock");
+  ok("par clock: stops while creep-paused / clock-paused, Freeze counts, FAST + levelStars use it", `sim ${e.getTime().toFixed(1)} s, par clock ${e.getPlayTime().toFixed(1)} s`);
 }
 
 // ---- 6. Perf: 150 bombs + boss + 2 rollers + 2 pickups + fever ------------------------

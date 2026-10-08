@@ -1,5 +1,6 @@
 // STARS per level (three independent badges, a win is needed for any):
-//   CLEAR = win, FAST = time <= par, FLAWLESS = no roller hit, no lurch and
+//   CLEAR = win, FAST = play time <= par (ArenaCore.playTime: stops while the
+//   creep is paused or setClockPaused(true) - intro, tutorials, gates, pause), FLAWLESS = no roller hit, no lurch and
 //   danger never >= 0.9. Win also adds the clear bonus max(0, par - time) x 20,
 //   then emits phaseChanged(won), won and levelStars (pure data: the UI
 //   persists bests). Best combo is tracked by ArenaCore.bumpCombo.
@@ -29,7 +30,7 @@ export class Stars {
   }
 
   read(): StarProgress {
-    this.progress.time = this.core.time;
+    this.progress.time = this.core.playTime;
     return this.progress;
   }
 
@@ -37,21 +38,21 @@ export class Stars {
   win() {
     const core = this.core;
     if (!core.playing) return;
-    const def = core.def, p = this.read();
+    const def = core.def, p = this.read(), time = core.playTime;
     core.sys.shots.clear();
     core.sys.pickups.slot = null;
-    core.addScore(Math.round(Math.max(0, def.par - core.time) * core.fun.stars.clearBonusPerSec));
+    core.addScore(Math.round(Math.max(0, def.par - time) * core.fun.stars.clearBonusPerSec));
     core.setPhase("won");
-    core.emit("won", { score: core.score, time: core.time });
-    const fast = core.time <= def.par;
+    core.emit("won", { score: core.score, time });
+    const fast = time <= def.par;
     const b = this.best;
     core.emit("levelStars", {
       level: core.level, clear: true, fast, flawless: p.flawless, count: 1 + (fast ? 1 : 0) + (p.flawless ? 1 : 0),
-      time: core.time, par: def.par, bestCombo: core.bestCombo,
+      time, par: def.par, bestCombo: core.bestCombo,
       newBest: {
         score: b.score === undefined || core.score > b.score,
         combo: b.combo === undefined || core.bestCombo > b.combo,
-        time: b.time === undefined || core.time < b.time,
+        time: b.time === undefined || time < b.time,
       },
     });
   }

@@ -110,7 +110,8 @@ export class ArenaEngine {
   getLevelDef(): Readonly<LevelDef> { return this.core.def; }
   getPhase(): ArenaPhase { return this.core.phase; }
   getRemaining(): number { return this.core.active.length; }
-  getTime(): number { return this.core.time; }
+  getTime(): number { return this.core.time; } // simulation time (incl. intro / tutorial)
+  getPlayTime(): number { return this.core.playTime; } // par / FAST clock (see setClockPaused)
   getRevision(): number { return this.core.revision; }
   getPickups(): readonly Readonly<Pickup>[] { return this.sys.pickups.list; }
   getPowerSlot(): PowerKind | null { return this.sys.pickups.slot; }
@@ -195,6 +196,14 @@ export class ArenaEngine {
     this.core.touch();
   }
 
+  // Stop / resume the par (FAST) clock without touching the simulation, for
+  // UI gates the creep pause doesn't cover (CLICK TO PLAY, overlays). The par
+  // clock already stops whenever the creep is paused (intro sweep, L1
+  // tutorial, L5 roll lesson) and when update() isn't called / gets dt 0.
+  setClockPaused(paused: boolean) {
+    this.core.clockPaused = paused;
+  }
+
   // Fire the loaded power, else the current bomb, along yaw. False if not
   // allowed right now (a press during a roll / late stun is buffered).
   fire(): boolean { return this.sys.shots.fire(); }
@@ -251,6 +260,7 @@ export class ArenaEngine {
     animateFx(core.bombs, c, step);
     if (core.playing) {
       core.time += step;
+      if (!core.creepPaused && !core.clockPaused) core.playTime += step;
       const world = core.worldPaused ? 0 : step;
       core.worldTime += world;
       core.creepTime += world;
@@ -306,7 +316,7 @@ export class ArenaEngine {
     Object.assign(core.shooter, { x: 0, z: 0, yaw: -Math.PI / 2, vx: 0, vz: 0, ax: 0, az: 0, moving: false, cooldown: 0 });
     updateMuzzle(core.shooter, c);
     core.input.x = core.input.z = 0;
-    core.score = core.combo = core.bestCombo = core.time = core.worldTime = core.creepTime = core.surge = core.freeze = 0;
+    core.score = core.combo = core.bestCombo = core.time = core.playTime = core.worldTime = core.creepTime = core.surge = core.freeze = 0;
     core.creepBase = def.creepBase;
     core.resetLevelFlags();
     core.timeScale.reset();

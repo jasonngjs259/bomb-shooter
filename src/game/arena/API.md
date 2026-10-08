@@ -44,7 +44,8 @@ Each trigger also emits `slowMo`.
 | `getStun()` | seconds of stun left |
 | `getBoss()` | `BossState \| null`: `{ mk, id, x, z, r, hp, maxHp, phase, weakColor, nextWeakColor, weakIn, shield[], shieldRadius, orbitSpeed (rad/s, signed), invulnerable }`. Each shield entry is `{ id, angle, x, z, colorIndex, scale }` |
 | `getTimeScale()` | current slow-mo scale (1 = normal) |
-| `getStarProgress()` | `{ time, par, flawless, maxDanger }`. `flawless` is whether FLAWLESS is still possible |
+| `getStarProgress()` | `{ time, par, flawless, maxDanger }`. `time` is the **par clock** (= `getPlayTime()`), `flawless` is whether FLAWLESS is still possible |
+| `getPlayTime()` | the par / FAST clock: seconds of real play. It only runs while the creep runs and `setClockPaused(false)`; Freeze time counts. `getTime()` is still the raw simulation time (incl. intro / tutorials) |
 | `getBestCombo()` | best combo this level. The combo count has no cap; only the score multiplier caps at x5 |
 | `getFunConfig()` | the merged `ARENA_FUN` |
 
@@ -67,7 +68,8 @@ The unchanged getters are `getBombs`, `getShooter`, `getCurrentBomb/NextBomb`, `
 | `newGame({ level?, keepScore?, levelDef?, best? })` | `levelDef` overrides the table. `best: { score?, combo?, time? }` holds the persisted bests and is used for `levelStars.newBest` |
 | `fire(): boolean` | Fires the loaded power first, without advancing the colour queue. Rejected while rolling or stunned, but the press is buffered: during a roll it fires at roll end, and during the last 0.2 s of a stun it fires when the stun ends |
 | `swapBomb(): boolean` | Returns false while a power is loaded. The UI plays the "denied" blip |
-| `roll(dirX, dirZ): boolean` | Takes a world-space vector. If its length is ≤ 0.3, the engine uses the move input instead, and if that is also ≤ 0.3 it rolls backward (−facing). Returns true if the roll started or was buffered (pressed ≤ 0.2 s before ready). Before L5 it returns false and `getRoll().state === "locked"` |
+| `setClockPaused(paused)` | Stops / resumes the par clock only (the simulation keeps going). The par clock already stops whenever the creep is paused (intro sweep, L1 tutorial, L5 roll lesson) and when `update()` gets dt 0 (pause menu). Call it for any other gate where the player isn't playing yet, e.g. CLICK TO PLAY |
+| `roll(dirX, dirZ): boolean` | Takes a world-space vector. If its length is ≤ 0.3, the engine uses the move input instead, and if that is also ≤ 0.3 it dodges smart: perpendicular to a roller approaching within 6 w (the side with more room from the border and other rollers), else sideways to the facing (towards open space, alternating on a tie). Returns true if the roll started or was buffered (pressed ≤ 0.2 s before ready). Before L5 it returns false and `getRoll().state === "locked"` |
 | `setFireHeld(held)` | Auto-repeats fire, but only while fever is active |
 | `previewPower(kind, yaw): number[]` | Field bomb ids that `kind` would remove if fired along `yaw` |
 | `turn(delta)` | Turns at half rate while stunned |
@@ -115,14 +117,14 @@ Existing events are unchanged: `shoot`, `stick`, `pop`, `shatter`, `miss`, `cree
 | `rollEnd` | `{}` | |
 | `rollReady` | `{}` | Cooldown done |
 | `bossSpawned` | `{ mk, hp, shield }` | Right after `phaseChanged → playing` on boss levels |
-| `bossShieldPop` | `{ id, x, z, colorIndex, remaining }` | Popped by a shot or power, or by the phase 3 shatter |
+| `bossShieldPop` | `{ id, x, z, colorIndex, remaining }` | Popped by a shot or power, or by the phase 3 shatter. Each pop restarts the regrow timer and slows the orbit to 40% for 1.5 s (a clear window; `getBoss().orbitSpeed` shows it) |
 | `bossShieldRegrow` | `{ id }` | Grows from the core over 0.5 s (`scale` 0→1) |
 | `bossHit` | `{ damage, weak, hp, maxHp, x, z }` | `damage` is 0 while invulnerable |
 | `bossWeakColor` | `{ colorIndex, next, in }` | Weak colour changed (every 6 s). Flicker `next` when `weakIn <= 1` |
 | `bossPhase` | `{ phase, previous }` | At ≤ 60% and ≤ 25% HP, after `bossHit` |
 | `bossDefeated` | `{ mk, score, time }` | Core HP 0. Followed by `shatter` for the ring chain, then `won` and `levelStars` |
 | `wallPush` | `{ x, z, bombs: FxBomb[], distance }` | A non-popping shot would have stuck within `deflectMargin` (1.0) of the border. The shot is consumed and `bombs` (the hit bomb's cluster within 1.2 w of the impact) ease `distance` w outward over ~0.25 s (1.5, halved on a bomb pushed within 2 s). Neighbours get a small kick. Combo resets, fever −8. A same-colour shot landing > 0.15 outside the line sticks as a pair instead |
-| `levelStars` | `{ level, clear, fast, flawless, count, time, par, bestCombo, newBest: { score, combo, time } }` | Right after `won`. This is pure data; the UI persists it |
+| `levelStars` | `{ level, clear, fast, flawless, count, time, par, bestCombo, newBest: { score, combo, time } }` | Right after `won`. `time` (like `won.time` and `bossDefeated.time`) is the par clock, `getPlayTime()`. This is pure data; the UI persists it |
 
 **Order within one update:** `pop` → `shatter` → `armorBroken` → `tickingDefused` → `feverChanged` → `scoreChanged` → `pickupSpawned`, then `phaseChanged(won)` → `won` → `levelStars`. `bossHit` comes before `bossPhase`. On a boss kill the order is `bossHit` → `bossDefeated` → `slowMo` → `shatter` → `scoreChanged` → `phaseChanged(won)` → `won` → `levelStars`.
 

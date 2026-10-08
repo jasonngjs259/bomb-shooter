@@ -25,6 +25,7 @@ import type { ArenaEngine } from "../../game/arena";
 import type { PowerKind } from "../../game/arena/funTypes";
 import { QuadSink } from "../three/fx/SpriteBatch";
 import { BombBatch } from "../three/world/BombBatch";
+import { bombGlow, colorAt } from "../three/palette";
 import { clamp01, easeInOutCubic, easeOutQuad, springDecay } from "../three/world/easing";
 import { BombDecor } from "./BombDecor";
 import { GroundQuads } from "./GroundQuads";
@@ -38,6 +39,7 @@ const SHELLS = 48;
 const BLACK = new Color(0, 0, 0);
 const WHITE = new Color(1, 1, 1);
 const DEFLECT = new Color("#FF2D55");
+const ORANGE = new Color("#FF8A3D");
 const VOLT = 1; // palette index of the gold bomb (mega / lightning look)
 export const POWER_COLOR: Record<PowerKind, Color> = {
   rainbow: new Color("#FF3DCB"), mega: new Color("#FFD23F"), lightning: new Color("#FFF36B"),
@@ -222,8 +224,11 @@ export class ArenaBombs {
         this.e.set(rotX, rotY, rotZ);
         this.q2.setFromEuler(this.e);
         this.q.premultiply(this.q2);
-        const glow = bomb.telegraph >= 0 ? 0.6 + 0.4 * Math.sin(o.t * Math.PI * 2 * 6) : 0.1;
+        const tele = bomb.telegraph >= 0;
+        const glow = tele ? 0.6 + 0.4 * Math.sin(o.t * Math.PI * 2 * 6) : 0.04;
         this.decor.tread(x, y, z, this.q, glow, scale);
+        // telegraph: an orange glow disc pulsing on the ground under it
+        if (tele) this.shadows.add(x, 0.07, z, 1.9 + 0.3 * Math.sin(o.t * Math.PI * 2 * 3), ORANGE, 0.55);
       }
       if (this.ghost.has(bomb.id)) {
         // POWER ghost: shell + a pulsing halo in the power colour (reads at range)
@@ -278,7 +283,16 @@ export class ArenaBombs {
       d.glow = 0.6; d.tint = 0; d.halo = 1; d.spark = o.low ? 0 : 1; d.shadow = false;
       batch.add();
       this.shadows.add(r.x, 0.065, r.z, 0.95, BLACK, 0.5);
-      this.decor.tread(r.x, BOMB_Y, r.z, q, 0.85, 1);
+      this.decor.tread(r.x, BOMB_Y, r.z, q, 0.04, 1);
+      // speed trail: fading glows in the bomb colour behind it (motion blur)
+      if (!o.still && r.speed > 0) {
+        const col = colorAt(bombGlow, r.colorIndex);
+        for (let k = 1; k <= 3; k++) {
+          const back = k * 0.32;
+          const sz = (1.15 - k * 0.2) * U;
+          this.glowSink.add((r.x - r.dirX * back) * U, BOMB_Y * U, (r.z - r.dirZ * back) * U, sz, sz, col, 0.42 - k * 0.11);
+        }
+      }
       if (o.showPop && ray.target === "roller" && ray.targetId === r.id) this.shell(r.x, BOMB_Y, r.z, 1.2, WHITE);
     }
     if (this.rollerSpin.size > engine.getRollers().length + 4) this.pruneRollers(engine);

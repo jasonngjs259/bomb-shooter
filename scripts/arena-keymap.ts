@@ -76,7 +76,7 @@ r = run(5, "Space", "shift");
 assert(r.shots === 1 && r.rolls === 0, "engine L5 shift setting: Space shoots");
 r = run(4, "ShiftLeft", "shift");
 assert(r.swaps === 1, "engine L4 shift setting: Shift swaps");
-// roll(0, 0) without move input rolls backward (-facing)
+// roll(0, 0) without move input and no roller near: a sideways dodge (perpendicular to the facing)
 {
   const e = new ArenaEngine({ random: () => 0.37 });
   e.newGame({ level: 5 });
@@ -85,7 +85,7 @@ assert(r.swaps === 1, "engine L4 shift setting: Shift swaps");
   e.roll(0, 0);
   e.update(1 / 30);
   const d = e.getRoll();
-  assert(Math.abs(d.dirX + Math.cos(yaw)) < 1e-6 && Math.abs(d.dirZ + Math.sin(yaw)) < 1e-6, "no stick input: roll backward");
+  assert(Math.abs(d.dirX * Math.cos(yaw) + d.dirZ * Math.sin(yaw)) < 1e-6 && Math.abs(Math.hypot(d.dirX, d.dirZ) - 1) < 1e-6, "no stick input: sideways smart roll");
 }
 // fever hold: setFireHeld auto-fires only in fever
 {
