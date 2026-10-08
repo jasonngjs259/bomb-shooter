@@ -12,8 +12,8 @@ import type { ArenaEngine } from "../game/arena";
 import { haptics } from "../fx/haptics";
 import { getSettings } from "../ui/settings";
 import { BOMB_HEX, fonts, palette } from "../ui/theme";
-import { ArenaControls } from "./ArenaControls";
-import { DEG, stickCurve } from "./arenaMath";
+import { ArenaControls, TOUCH_RAD_PER_PX } from "./ArenaControls";
+import { stickCurve } from "./arenaMath";
 
 const BASE = 120;
 const KNOB = 52;
@@ -99,7 +99,7 @@ export const TouchControls = memo(function TouchControls({
       .runOnJS(true)
       .onChange((e) => {
         const flick = Math.abs(e.velocityX) > 600 ? 1.6 : 1;
-        controls.addYaw(e.changeX * 0.45 * DEG * flick);
+        controls.addYaw(e.changeX * TOUCH_RAD_PER_PX * flick, "touch");
       })
       .onEnd(() => {
         if (getSettings().aimAssist) controls.startAssist(engine);

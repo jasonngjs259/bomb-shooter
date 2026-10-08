@@ -1,12 +1,14 @@
 // Headless checks for Arena 360 controls + camera maths:
 // `npx tsx scripts/arena-controls.ts`
 
-import { ArenaControls } from "../src/arena/ArenaControls";
+import { ArenaControls, TOUCH_RAD_PER_PX } from "../src/arena/ArenaControls";
 import {
-  angleDiff, biggestThreat, cameraRelativeMove, chasePose, facing, modelRotationY, RIG_LANDSCAPE, rightOf, rotateY,
+  angleDiff, biggestThreat, cameraRelativeMove, chasePose, DEG, facing, modelRotationY, RIG_LANDSCAPE, rightOf, rotateY,
   sectorCentre, stickCurve, vFovFor,
 } from "../src/arena/arenaMath";
 import { ArenaEngine } from "../src/game/arena";
+import { ChaseCamera } from "../src/render/arena/ChaseCamera";
+import { PostureState } from "../src/render/arena/character/postureState";
 import { poseFor } from "../src/render/arena/stickPose";
 import { hasBaseRender, registerBaseRender, renderNoPresent } from "../src/render/three/renderer";
 import { Camera, Object3D, PerspectiveCamera, WebGLRenderer } from "three";
@@ -87,7 +89,9 @@ assert(near(vFovFor(9 / 19.5), 72, 0.01), "portrait clamps to 72");
   const y0 = e.getShooter().yaw;
   c.addYaw(0.3);
   c.apply(e, camYaw, 1 / 60);
-  assert(near(angleDiff(y0, e.getShooter().yaw), 0.3, 1e-9), "mouse-look adds yaw (+ = right)");
+  assert(near(angleDiff(y0, e.getShooter().yaw), 0.15, 1e-9), "mouse-look: 2-frame average, half on the first frame");
+  c.apply(e, camYaw, 1 / 60);
+  assert(near(angleDiff(y0, e.getShooter().yaw), 0.3, 1e-9), "mouse-look adds exactly the raw yaw (+ = right)");
   c.snapTo(e.getShooter().yaw, 2.0, 0.28);
   for (let i = 0; i < 20; i++) c.apply(e, camYaw, 1 / 60);
   assert(Math.abs(angleDiff(e.getShooter().yaw, 2.0)) < 1e-6, "snap-turn reaches target in 280 ms");
@@ -139,6 +143,167 @@ assert(near(vFovFor(9 / 19.5), 72, 0.01), "portrait clamps to 72");
   fake.render(scene, cam);
   assert(calls.join() === "draw,draw,present", "last pass presents once");
   // (the source scan for prototype method calls: scripts/check-no-prototype-calls.mjs)
+}
+
+// 9. Smoothness is frame-rate independent (character spec section 4 and
+//    QA checklist 7 / 12): the same curves at 30, 60 and 144 fps.
+{
+  const FPS = [30, 60, 144];
+  const ms = (x: number) => `${(x * 1000).toFixed(0)}ms`;
+  // movement: W held until 95% of top speed, then released until < 5%
+  const moveCurve = (fps: number) => {
+    const e = new ArenaEngine({ random: () => 0.42 });
+    e.newGame();
+    e.setCreepPaused(true);
+    const c = new ArenaControls();
+    c.enabled = true;
+    const dt = 1 / fps;
+    const top = e.getConfig().moveSpeed;
+    let t = 0;
+    let up = -1;
+    c.keys.up = true;
+    while (t < 2 && up < 0) {
+      c.apply(e, -Math.PI / 2, dt);
+      e.update(dt);
+      t += dt;
+      const sh = e.getShooter();
+      if (Math.hypot(sh.vx, sh.vz) >= 0.95 * top) up = t;
+    }
+    for (let i = 0; i < fps; i++) { c.apply(e, -Math.PI / 2, dt); e.update(dt); }
+    c.keys.up = false;
+    t = 0;
+    let down = -1;
+    while (t < 2 && down < 0) {
+      c.apply(e, -Math.PI / 2, dt);
+      e.update(dt);
+      t += dt;
+      const sh = e.getShooter();
+      if (Math.hypot(sh.vx, sh.vz) <= 0.05 * top) down = t;
+    }
+    return { up, down };
+  };
+  const mc = FPS.map(moveCurve);
+  mc.forEach((m, i) => {
+    assert(m.up >= 0.19 - 1 / FPS[i] && m.up <= 0.24 + 1 / FPS[i], `${FPS[i]} fps: 95% top speed in 190-240 ms (${ms(m.up)})`);
+    assert(m.down >= 0.16 - 1 / FPS[i] && m.down <= 0.2 + 1 / FPS[i], `${FPS[i]} fps: stop in 160-200 ms (${ms(m.down)})`);
+  });
+  // the closed-form spring is exact; differences are frame quantisation only
+  assert(Math.abs(mc[0].up - mc[2].up) <= 1 / 30 + 0.01, "movement curve matches across fps");
+
+  // key turn: 0 -> 150 deg/s in ~167 ms, stop in ~107 ms; same yaw at any fps
+  const keyTurn = (fps: number) => {
+    const e = new ArenaEngine({ random: () => 0.42 });
+    e.newGame();
+    e.setCreepPaused(true);
+    const c = new ArenaControls();
+    c.enabled = true;
+    const dt = 1 / fps;
+    const y0 = e.getShooter().yaw;
+    c.keys.turnR = true;
+    for (let t = 0; t < 0.5 - 1e-9; t += dt) c.apply(e, 0, dt);
+    c.keys.turnR = false;
+    for (let t = 0; t < 0.3 - 1e-9; t += dt) c.apply(e, 0, dt);
+    return angleDiff(y0, e.getShooter().yaw) / DEG;
+  };
+  const kt = FPS.map(keyTurn);
+  assert(kt.every((y) => Math.abs(y - kt[1]) < 0.5), `key turn identical at 30/60/144 fps (${kt.map((y) => y.toFixed(2)).join(" / ")} deg)`);
+  // 0.5 s held: 167 ms ramp (12.5 deg) + 333 ms at 150 (50 deg) + 107 ms brake (8 deg)
+  assert(Math.abs(kt[1] - 70.5) < 1.5, `key turn accel / decel profile (${kt[1].toFixed(1)} deg)`);
+
+  // touch drag through the 1 euro filter: a slow drag lags a little, the
+  // total always arrives (no inertia, no loss)
+  const touch = (fps: number) => {
+    const e = new ArenaEngine({ random: () => 0.42 });
+    e.newGame();
+    const c = new ArenaControls();
+    c.enabled = true;
+    const dt = 1 / fps;
+    const y0 = e.getShooter().yaw;
+    for (let i = 0; i < Math.round(0.3 * fps); i++) {
+      c.addYaw(4 * TOUCH_RAD_PER_PX * (60 / fps), "touch"); // 240 px/s slow drag
+      c.apply(e, 0, dt);
+    }
+    for (let i = 0; i < fps; i++) c.apply(e, 0, dt);
+    return angleDiff(y0, e.getShooter().yaw);
+  };
+  const tt = FPS.map(touch);
+  tt.forEach((y, i) => assert(Math.abs(y - tt[1]) < 0.02, `touch filter settles to the same yaw at ${FPS[i]} fps (${(y / DEG).toFixed(2)} deg)`));
+
+  // camera: strafe lag 0.5-0.8 w at 3 w/s, back within 350 ms; mouse yaw
+  // lag <= 3 deg at 360 deg/s; identical across fps
+  const strafe = (fps: number) => {
+    const cam = new PerspectiveCamera(60, 16 / 9, 0.05, 200);
+    const chase = new ChaseCamera();
+    chase.chase();
+    const dt = 1 / fps;
+    let x = 0;
+    const yaw = 0;
+    for (let t = 0; t < 0.5; t += dt) chase.update(cam, dt, x, 0, yaw, 16 / 9, 0, 0, 0, 0);
+    let lag = 0;
+    for (let t = 0; t < 1.5; t += dt) {
+      x += 0; // strafing along +z (camera right)
+      chase.update(cam, dt, 0, t * 3, yaw, 16 / 9, 0, 0, 0, 0);
+      lag = 1.5 * 3 - (cam.position.z - RIG_LANDSCAPE.side);
+    }
+    const z = 1.5 * 3;
+    let back = 0;
+    for (let t = 0; t < 1; t += dt) {
+      chase.update(cam, dt, 0, z, yaw, 16 / 9, 0, 0, 0, 0);
+      if (Math.abs(z - (cam.position.z - RIG_LANDSCAPE.side)) > 0.05) back = t + dt;
+    }
+    return { lag, back };
+  };
+  const st = FPS.map(strafe);
+  st.forEach((r, i) => {
+    assert(r.lag >= 0.5 && r.lag <= 0.8, `${FPS[i]} fps: strafe lag ${r.lag.toFixed(2)} w (0.5-0.8)`);
+    assert(r.back <= 0.35, `${FPS[i]} fps: camera re-centres in ${ms(r.back)} (<= 350)`);
+  });
+  const mouseLag = (fps: number) => {
+    const cam = new PerspectiveCamera(60, 16 / 9, 0.05, 200);
+    const chase = new ChaseCamera();
+    chase.chase();
+    chase.mouse = true;
+    const dt = 1 / fps;
+    let yaw = 0;
+    for (let t = 0; t < 0.3; t += dt) chase.update(cam, dt, 0, 0, yaw, 16 / 9, 0, 0, 0, 0);
+    for (let t = 0; t < 1; t += dt) {
+      yaw += 2 * Math.PI * dt;
+      chase.update(cam, dt, 0, 0, yaw, 16 / 9, 0, 0, 0, 0);
+    }
+    return Math.abs(angleDiff(chase.yaw, yaw)) / DEG;
+  };
+  const ml = FPS.map(mouseLag);
+  ml.forEach((l, i) => assert(l <= 3, `${FPS[i]} fps: mouse camera yaw lag ${l.toFixed(2)} deg at 360 deg/s (<= 3)`));
+  // posture springs (lean from a sprint start, stop dip): same at any fps
+  const lean = (fps: number) => {
+    const p = new PostureState();
+    const dt = 1 / fps;
+    let peak = 0;
+    let t = 0;
+    for (let i = 0; i < Math.round(0.6 * fps); i++, t += dt) {
+      const a = 24 * Math.exp(-t * 6);
+      p.step({ dt, t, speed: Math.min(3, t * 10), aF: a, aR: 0, yawRate: 0, idleTime: 0, still: false, low: false });
+      peak = Math.max(peak, p.pitch / DEG);
+    }
+    let dip = 0;
+    for (let i = 0; i < Math.round(0.5 * fps); i++, t += dt) {
+      p.step({ dt, t, speed: 0, aF: 0, aR: 0, yawRate: 0, idleTime: 0, still: false, low: false });
+      dip = Math.min(dip, p.dip);
+    }
+    return { peak, dip };
+  };
+  const ln = FPS.map(lean);
+  ln.forEach((l, i) => {
+    assert(l.peak >= 5.5, `${FPS[i]} fps: sprint-start lean ${l.peak.toFixed(1)} deg (~6+)`);
+    assert(l.dip < -0.03, `${FPS[i]} fps: stop dip ${(l.dip * 100).toFixed(1)} cm`);
+    assert(Math.abs(l.peak - ln[1].peak) < 0.6 && Math.abs(l.dip - ln[1].dip) < 0.004, `${FPS[i]} fps: posture springs match 60 fps`);
+  });
+  console.log(
+    `  smoothness @30/60/144 fps: lean ${ln.map((l) => l.peak.toFixed(1)).join("/")} deg, stop dip ${ln.map((l) => (l.dip * 100).toFixed(1)).join("/")} cm, ` +
+    `95% speed ${mc.map((m) => ms(m.up)).join("/")}, stop ${mc.map((m) => ms(m.down)).join("/")}, ` +
+    `key turn ${kt.map((y) => y.toFixed(1)).join("/")} deg, strafe lag ${st.map((r) => r.lag.toFixed(2)).join("/")} w ` +
+    `(back ${st.map((r) => ms(r.back)).join("/")}), mouse lag ${ml.map((l) => l.toFixed(2)).join("/")} deg`,
+  );
 }
 
 console.log(`arena controls: ${checks} checks passed`);

@@ -20,16 +20,22 @@ export function updateMuzzle(s: ShooterState, c: ArenaConfig) {
   s.muzzleZ = s.z + Math.sin(s.yaw) * c.muzzleOffset;
 }
 
-// Accelerate towards input * moveSpeed (decelerate when input is zero), then
-// clamp the body inside the arena, sliding along the border.
+// Velocity follows input * moveSpeed through a critically damped spring
+// (closed form, so the start/stop curve is the same at any frame rate);
+// omega depends on speeding up / slowing down / reversing. Then clamp the
+// body inside the arena, sliding along the border.
 export function stepShooter(s: ShooterState, input: Vec2XZ, c: ArenaConfig, dt: number) {
-  const hasInput = input.x !== 0 || input.z !== 0;
-  const rate = (hasInput ? c.moveAccel : c.moveDecel) * dt;
-  const dvx = input.x * c.moveSpeed - s.vx, dvz = input.z * c.moveSpeed - s.vz;
-  const dl = Math.hypot(dvx, dvz);
-  const k = dl <= rate ? 1 : rate / dl;
-  s.vx += dvx * k;
-  s.vz += dvz * k;
+  const tx = input.x * c.moveSpeed, tz = input.z * c.moveSpeed;
+  const omega = tx * s.vx + tz * s.vz < 0 ? c.moveReverse : tx * tx + tz * tz >= s.vx * s.vx + s.vz * s.vz ? c.moveAccel : c.moveDecel;
+  const e = Math.exp(-omega * dt);
+  const dx = s.vx - tx, dz = s.vz - tz;
+  const cx = (s.ax + omega * dx) * dt, cz = (s.az + omega * dz) * dt;
+  s.vx = tx + (dx + cx) * e;
+  s.vz = tz + (dz + cz) * e;
+  s.ax = (s.ax - omega * cx) * e;
+  s.az = (s.az - omega * cz) * e;
+  if (Math.abs(s.vx) < 1e-6 && tx === 0) s.vx = s.ax = 0;
+  if (Math.abs(s.vz) < 1e-6 && tz === 0) s.vz = s.az = 0;
   s.x += s.vx * dt;
   s.z += s.vz * dt;
   const lim = c.arenaRadius - c.shooterRadius, d = Math.hypot(s.x, s.z);
@@ -41,6 +47,11 @@ export function stepShooter(s: ShooterState, input: Vec2XZ, c: ArenaConfig, dt: 
     if (out > 0) {
       s.vx -= out * nx;
       s.vz -= out * nz;
+    }
+    const outA = s.ax * nx + s.az * nz;
+    if (outA > 0) {
+      s.ax -= outA * nx;
+      s.az -= outA * nz;
     }
   }
   s.moving = Math.hypot(s.vx, s.vz) > MOVING_SPEED;

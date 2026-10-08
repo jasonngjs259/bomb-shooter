@@ -6,12 +6,15 @@
 // launcher (right forearm) sits at -X and the next bomb over the left
 // shoulder at +X. Procedural states: idle breath, walk/backpedal, turn lean,
 // fire recoil, swap toss, lose (blown back) and win (V + hops + pumps).
+// Since the animated character (character/Character.ts) it is the fallback
+// avatar: shown while the model loads and if it can't load or skin.
 
 import {
   AdditiveBlending, BackSide, Color, CylinderGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial,
   MeshStandardMaterial, Object3D, SphereGeometry, TorusGeometry, Vector3,
 } from "three";
 import { DEG, modelRotationY } from "../../arena/arenaMath";
+import type { Avatar, AvatarFrame } from "./avatar";
 import { HEX } from "../three/palette";
 import { clamp01, easeOutQuad } from "../three/world/easing";
 import { PoseInput, poseFor, StickPose } from "./stickPose";
@@ -20,8 +23,10 @@ const LIMBS = 10;
 const JOINTS = 11;
 const HALO = 2.4;
 
-export class Stickman {
+export class Stickman implements Avatar {
   readonly group = new Group(); // world-space root (feet)
+  readonly holdCur = 0.55; // current bomb scale in the launcher
+  readonly holdNext = 0.45; // next bomb scale at the left shoulder
   readonly muzzle = new Object3D(); // launcher tip
   readonly cradle = new Object3D(); // current bomb seat on the launcher
   readonly shoulderSeat = new Object3D(); // next bomb over the left shoulder
@@ -160,19 +165,27 @@ export class Stickman {
     this.inp.loseDirZ = dz / len;
   }
   win() { this.inp.win = 0; }
+  flinch() {}
+  deflect() {}
   reset() {
     Object.assign(this.inp, { recoil: 99, swap: 99, lose: -1, win: -1 });
     this.slideX = this.slideZ = 0;
   }
   get swapT() { return this.inp.swap; }
 
-  setMuzzleColor(c: Color) {
-    this.ringMat.color.copy(c);
+  setColors(current: Color) {
+    this.ringMat.color.copy(current);
+  }
+
+  update(f: AvatarFrame) {
+    const speed = Math.hypot(f.vx, f.vz);
+    const fwd = speed > 1e-3 ? (f.vx * Math.cos(f.yaw) + f.vz * Math.sin(f.yaw)) / speed : 1;
+    this.animate(f.dt, f.x, f.z, f.yaw, speed / f.maxSpeed, fwd, f.yawRate, !f.low);
   }
 
   // x, z, yaw from the engine; speed 0..1 of max; forwardness = velocity
   // projected on facing (-1 backpedal .. 1); yawRate rad/s.
-  update(dt: number, x: number, z: number, yaw: number, speed: number, forwardness: number, yawRate: number, halos: boolean) {
+  private animate(dt: number, x: number, z: number, yaw: number, speed: number, forwardness: number, yawRate: number, halos: boolean) {
     const i = this.inp;
     i.t += dt; i.dt = dt; i.speed = speed; i.forwardness = forwardness; i.yawRate = yawRate;
     i.recoil += dt; i.swap += dt;
@@ -225,6 +238,11 @@ export class Stickman {
 
   // World position helpers (valid after update()).
   muzzleWorld(out: Vector3) { return this.muzzle.getWorldPosition(out); }
+  barrelWorld(out: Vector3) {
+    this.pivots.elbowR.getWorldPosition(this.v);
+    return this.muzzle.getWorldPosition(out).sub(this.v).normalize();
+  }
+  shadowXZ(out: Vector3) { return out.set(this.group.position.x, 0, this.group.position.z); }
 
   dispose() {
     this.disposables.forEach((d) => d.dispose());

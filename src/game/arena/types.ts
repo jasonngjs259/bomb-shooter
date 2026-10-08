@@ -30,8 +30,9 @@ export interface ArenaConfig {
 
   shooterRadius: number; // body radius; centre is clamped to arenaRadius - this
   moveSpeed: number; // top speed, units / s
-  moveAccel: number; // units / s^2 towards the input velocity
-  moveDecel: number; // units / s^2 when input is released
+  moveAccel: number; // velocity spring omega (1 / s) while speeding up
+  moveDecel: number; // velocity spring omega while slowing down / released
+  moveReverse: number; // velocity spring omega when the input opposes the velocity
   muzzleOffset: number; // shots spawn this far in front of the body centre
 
   shotSpeed: number; // units / s, straight line, no gravity
@@ -92,6 +93,8 @@ export interface ShooterState {
   yaw: number; // facing, radians, (-PI, PI]
   vx: number; // velocity, units / s
   vz: number;
+  ax: number; // acceleration (velocity spring state), units / s^2
+  az: number;
   moving: boolean; // speed above a small threshold (for run/idle animation)
   muzzleX: number; // where the next shot spawns
   muzzleZ: number;

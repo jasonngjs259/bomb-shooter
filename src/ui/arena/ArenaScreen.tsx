@@ -18,6 +18,7 @@ import { getSimClock } from "../../game/clock";
 import { getFxBus } from "../../fx/bus";
 import { ArenaCanvas } from "../../render/arena/ArenaCanvas";
 import { ArenaWorld, Box, RadarRect } from "../../render/arena/ArenaWorld";
+import { astronautBytes } from "../../render/arena/character/astronautAsset";
 import { BoardLayout } from "../../render/layout";
 import { rendererStatus, useRendererStatus } from "../../render/status";
 import { FxTextOverlay } from "../../render/three/FxTextOverlay";
@@ -62,7 +63,7 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   const controls = useMemo(() => new ArenaControls(), []);
   const clock = getSimClock(engine);
   const bus = getFxBus(engine);
-  const world = useMemo(() => new ArenaWorld(engine, controls, clock, bus), [engine, controls, clock, bus]);
+  const world = useMemo(() => new ArenaWorld(engine, controls, clock, bus, astronautBytes), [engine, controls, clock, bus]);
   const settings = useSettings();
   const still = reduceMotion(settings);
   const status = useRendererStatus();
@@ -76,6 +77,15 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   const tutorialSeen = useRef(true);
   const session = useArenaSession(engine, still);
   const hud = useArenaHud(engine);
+  // Dev-only (web): expose the engine + world for QA scripts (window.__arena).
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS !== "web" || typeof window === "undefined") return;
+    const w = window as unknown as { __arena?: { engine: ArenaEngine; world: ArenaWorld } };
+    w.__arena = { engine, world };
+    return () => {
+      delete w.__arena;
+    };
+  }, [engine, world]);
 
   // mount: landscape, new game, intro sweep with the creep paused
   useEffect(() => {

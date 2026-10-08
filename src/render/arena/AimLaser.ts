@@ -1,6 +1,7 @@
 // Arena aim guide (spec section 5): a flat glowing ribbon from the launcher
 // muzzle to the aim ray's end (segment A slants down to bomb height over the
-// first 1.2 w, segment B is flat), with marching dashes, a fade along its
+// first 3.0 w, ~13 deg, and the character's barrel is aimed along it;
+// segment B is flat), with marching dashes, a fade along its
 // length and a faded tip on a miss; a ghost bomb at the landing point with a
 // rotating dashed ring and a ground decal ring. World units.
 
@@ -9,7 +10,6 @@ import {
   ShaderMaterial, SphereGeometry, Vector3,
 } from "three";
 import type { AimRay } from "../../game/arena";
-import { rightOf } from "../../arena/arenaMath";
 
 const VERT = /* glsl */ `
 attribute vec2 aLine; // along (w), across (-1..1)
@@ -53,6 +53,14 @@ void main() { vLocal = position; gl_Position = projectionMatrix * modelViewMatri
 
 const HALF = 0.11; // halo half width (core 0.05 w)
 const BOMB_Y = 0.45;
+export const SEG_A = 3.0; // w along the ray where the slant meets bomb height
+
+// End of segment A (world): where the barrel points (character spec 4).
+export function segmentAEnd(ray: AimRay, yaw: number, out: Vector3) {
+  const len = Math.hypot(ray.to.x - ray.from.x, ray.to.z - ray.from.z);
+  const a = Math.min(SEG_A, len);
+  return out.set(ray.from.x + Math.cos(yaw) * a, BOMB_Y, ray.from.z + Math.sin(yaw) * a);
+}
 
 export class AimLaser {
   readonly group = new Group();
@@ -107,29 +115,15 @@ export class AimLaser {
   update(ray: AimRay, muzzle: Vector3, yaw: number, glow: Color, time: number, alpha: number, still: boolean, wide = 1) {
     this.group.visible = alpha > 0.01;
     if (!this.group.visible) return;
-    const dx = Math.cos(yaw);
-    const dz = Math.sin(yaw);
     const len = Math.hypot(ray.to.x - ray.from.x, ray.to.z - ray.from.z);
-    const aLen = Math.min(1.2, len);
-    this.p1.set(ray.from.x + dx * aLen, BOMB_Y, ray.from.z + dz * aLen);
-    const r = rightOf(yaw);
+    const aLen = Math.min(SEG_A, len);
+    segmentAEnd(ray, yaw, this.p1);
+    const rx = -Math.sin(yaw); // right of the aim
+    const rz = Math.cos(yaw);
     const w = HALF * wide;
-    const pts: [number, number, number, number][] = [
-      [muzzle.x, muzzle.y, muzzle.z, 0],
-      [this.p1.x, this.p1.y, this.p1.z, aLen],
-      [ray.to.x, BOMB_Y, ray.to.z, Math.max(len, aLen + 0.01)],
-    ];
-    pts.forEach(([x, y, z, along], i) => {
-      for (let s = 0; s < 2; s++) {
-        const side = s === 0 ? -1 : 1;
-        const v = i * 2 + s;
-        this.pos[v * 3] = x + r.x * w * side;
-        this.pos[v * 3 + 1] = y;
-        this.pos[v * 3 + 2] = z + r.z * w * side;
-        this.line[v * 2] = along;
-        this.line[v * 2 + 1] = side;
-      }
-    });
+    this.vert(0, muzzle.x, muzzle.y, muzzle.z, 0, rx, rz, w);
+    this.vert(1, this.p1.x, this.p1.y, this.p1.z, aLen, rx, rz, w);
+    this.vert(2, ray.to.x, BOMB_Y, ray.to.z, Math.max(len, aLen + 0.01), rx, rz, w);
     this.geo.getAttribute("position").needsUpdate = true;
     this.geo.getAttribute("aLine").needsUpdate = true;
     const u = this.mat.uniforms;
@@ -152,6 +146,19 @@ export class AimLaser {
       this.decal.position.set(land.x, 0.075, land.z);
       this.decalMat.color.copy(glow);
       this.decalMat.opacity = 0.6 * alpha;
+    }
+  }
+
+  // two ribbon verts (left / right edge) for point i
+  private vert(i: number, x: number, y: number, z: number, along: number, rx: number, rz: number, w: number) {
+    for (let s = 0; s < 2; s++) {
+      const side = s === 0 ? -1 : 1;
+      const v = i * 2 + s;
+      this.pos[v * 3] = x + rx * w * side;
+      this.pos[v * 3 + 1] = y;
+      this.pos[v * 3 + 2] = z + rz * w * side;
+      this.line[v * 2] = along;
+      this.line[v * 2 + 1] = side;
     }
   }
 

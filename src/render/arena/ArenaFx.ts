@@ -2,8 +2,9 @@
 // stick dust ring, chain-staggered pops (flash, ground shockwave decal, 3D
 // particles with gravity, shell debris), orphan shatter, knock-back ring,
 // deflect sparks, creep surge warning, the lose sequence (hit-stop, border
-// flash, offending bomb detonates, ring chain-detonates by angle, stickman
-// blown back, camera crane) and the win celebration (slow-mo, colour chase,
+// flash, offending bomb detonates, ring chain-detonates by angle, player
+// blown back, camera crane), the avatar's surge flinch + deflect wobble and
+// the win celebration (slow-mo, colour chase,
 // win pose, orbit, fireworks). Particles/debris/glows live in the FX space
 // (Classic units, U per world unit); ground decals are in world units.
 
@@ -22,7 +23,7 @@ import { ArenaBombs, U } from "./ArenaBombs";
 import { Billboards } from "./Billboards";
 import { ChaseCamera } from "./ChaseCamera";
 import { GroundQuads } from "./GroundQuads";
-import { Stickman } from "./Stickman";
+import type { Avatar } from "./avatar";
 
 interface Anim { ring: boolean; x: number; y: number; z: number; t0: number; dur: number; r0: number; r1: number; col: Color; a0: number }
 interface Timer { at: number; fn: () => void }
@@ -58,7 +59,7 @@ export class ArenaFx {
     private glow: Billboards,
     private decals: GroundQuads,
     private bombs: ArenaBombs,
-    private stick: Stickman,
+    private avatar: () => Avatar,
     private camera: ChaseCamera,
     private clock: SimClock,
     private bus: TypedEmitter<FxBusEvents>,
@@ -67,7 +68,7 @@ export class ArenaFx {
     const e = engine;
     this.offs.push(
       e.on("shoot", ({ yaw, colorIndex }) => {
-        const p = this.stick.muzzleWorld(this.mv);
+        const p = this.avatar().muzzleWorld(this.mv);
         const gc = colorAt(bombGlow, colorIndex);
         this.anim(false, p.x, p.y, p.z, 0.09, 0, 0.4, gc, 1);
         this.anim(false, p.x, p.y, p.z, 0.07, 0, 0.22, this.white, 1);
@@ -76,11 +77,11 @@ export class ArenaFx {
           const v = rand(6, 10);
           this.spawn(p.x, p.y, p.z, Math.cos(a) * v, rand(-1, 1.5), Math.sin(a) * v, 0.18, 0.12, this.white, gc, 0, 0.92);
         }
-        this.stick.fire();
+        this.avatar().fire();
         haptics.light();
       }),
       e.on("swap", () => {
-        this.stick.swap();
+        this.avatar().swap();
         haptics.selection();
       }),
       e.on("stick", ({ x, z }) => {
@@ -134,10 +135,11 @@ export class ArenaFx {
       }),
       e.on("miss", ({ x, z, deflected }) => {
         if (!deflected) return;
+        this.avatar().deflect();
         // the shot bounced off at the border line: spark + "DEFLECT"
         this.anim(true, x, 0.1, z, 0.3, 0.2, 1.1, this.white, 0.9);
         this.anim(false, x, 0.45, z, 0.12, 0, 0.6, this.white, 1);
-        // big screen-space pop above the stickman (not at the far border,
+        // big screen-space pop above the player (not at the far border,
         // where it hid behind his head)
         const sh = this.engine.getShooter();
         const sp = this.project(sh.x, 2.4, sh.z);
@@ -152,6 +154,7 @@ export class ArenaFx {
         this.surgeT = this.t;
         this.bus.emit("banner", { text: "SURGE!", color: HEX.danger, duration: 1400 });
         this.later(0.75, () => {
+          this.avatar().flinch();
           this.shake(0.05, 0.3);
           this.gridPulse = 1.6;
         });
@@ -217,14 +220,14 @@ export class ArenaFx {
         this.explode(b, this.n(4), 0, 1);
       });
     }
-    this.later(0.7, () => this.stick.lose(x, z));
+    this.later(0.7, () => this.avatar().lose(x, z));
     this.later(0.9, () => this.camera.crane(x, z));
   }
 
   private win() {
     this.clock.slow(0.35, 300);
     this.chaseT = this.t;
-    this.stick.win();
+    this.avatar().win();
     this.camera.orbit();
     this.bus.emit("banner", { text: "ARENA CLEAR!", color: HEX.gold, duration: 2200 });
     haptics.success();

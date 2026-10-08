@@ -6,7 +6,8 @@
 // 12 bombs nearest the border (+ current/next), the current bomb on the
 // launcher mouth (0.55x), the next beside the left shoulder (0.45x; swap
 // arcs), the in-flight shot,
-// ground blob shadows and the would-pop highlight shells.
+// ground blob shadows (bombs + the player, under the hips) and the would-pop
+// highlight shells. Loadout seats and scales come from the avatar.
 
 import {
   BackSide, Color, InstancedMesh, Matrix4, MeshBasicMaterial, SphereGeometry, Texture, Vector3,
@@ -16,14 +17,12 @@ import { QuadSink } from "../three/fx/SpriteBatch";
 import { BombBatch } from "../three/world/BombBatch";
 import { clamp01, easeInOutCubic, easeOutQuad, springDecay } from "../three/world/easing";
 import { GroundQuads } from "./GroundQuads";
-import { Stickman } from "./Stickman";
+import type { Avatar } from "./avatar";
 
 export const K = 0.45 / 19; // world units per Classic unit
 export const U = 1 / K;
 const BOMB_Y = 0.45;
 const SPARKS = 12;
-const HELD_CUR = 0.55; // current bomb scale in the launcher
-const HELD_NEXT = 0.45; // next bomb scale at the left shoulder
 const BLACK = new Color(0, 0, 0);
 
 export interface BombFrameOpts { t: number; still: boolean; low: boolean; colourAssist: boolean; showPop: boolean }
@@ -57,7 +56,7 @@ export class ArenaBombs {
     this.batch.haloAlpha = high ? 0.9 : 0.25;
   }
 
-  frame(engine: ArenaEngine, stick: Stickman, o: BombFrameOpts) {
+  frame(engine: ArenaEngine, stick: Avatar, o: BombFrameOpts) {
     const batch = this.batch;
     const d = batch.draw;
     const bombs = engine.getBombs();
@@ -128,7 +127,13 @@ export class ArenaBombs {
       this.shotFrom = null;
     }
 
-    // loadout: current on the launcher, next over the left shoulder
+    // player blob shadow under the hips (moves with the weight shift)
+    stick.shadowXZ(this.a);
+    this.shadows.add(this.a.x, 0.06, this.a.z, 1.0, BLACK, 0.55);
+
+    // loadout: current on the launcher, next in the back canister
+    const HELD_CUR = stick.holdCur;
+    const HELD_NEXT = stick.holdNext;
     if (engine.getPhase() !== "title") {
       stick.cradle.getWorldPosition(this.a);
       stick.shoulderSeat.getWorldPosition(this.b);

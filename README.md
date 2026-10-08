@@ -80,8 +80,20 @@ on native) switches to 2D. State machine: `src/render/status/`.
 ## Arena 360 (new mode)
 
 Pick **ARENA 360** on the title (Classic is still there). You are a neon
-stick figure with a bomb launcher standing in a round arena; a ring of bombs
+astronaut with an arm-cannon standing in a round arena; a ring of bombs
 surrounds it on all sides (360°) and slowly creeps inwards.
+
+**Character.** A rigged, animated GLB (`src/assets/models/astronaut.glb`,
+loaded with three's GLTFLoader; `src/render/arena/character/`): legs blend
+idle / walk / run / strafe / backpedal clips by velocity on one shared gait
+phase (no foot sliding; diagonals turn the legs up to 45-60 deg and play one
+clip), the torso twists onto the aim and a CCD pass keeps the barrel on the
+laser; lean, stop settle, breathing, relaxed stance + fidgets, turn-in-place
+steps, recoil, swap reach, surge flinch, death and victory clips. Movement,
+key turning, touch drags (1 euro filter) and the chase camera run on
+frame-rate independent springs. If the model can't load or animate the
+original stick figure (`Stickman.ts`) takes over, so the game never breaks.
+Dev web builds expose `window.__arena = { engine, world }` for QA scripts.
 
 **Rules**
 - Shoot a bomb into the field: if it touches **3 or more of the same colour**
@@ -137,7 +149,7 @@ src/render/adaptive/        Active renderer: 3D with automatic 2D fallback
 src/render/status/          WebGL probe + context-loss / fallback state
 src/game/arena/             Arena 360 engine (framework-free)
 src/arena/                  Arena controls (maths, desktop, touch)
-src/render/arena/           Arena 360 three.js world (stickman, camera, FX)
+src/render/arena/           Arena 360 three.js world (character, camera, FX)
 src/ui/arena/               Arena 360 screen, HUD, tutorial, end card
 src/ui/                     HUD, title, pause, game-over card, hints, theme
 src/fx/bus.ts               Renderer <-> UI presentation events
@@ -149,3 +161,13 @@ src/fx/haptics.ts           expo-haptics wrapper (no-op on web)
 The engine works in logical board units and knows nothing about React or the
 platform. A renderer implements `BoardRenderer` (`src/render/BoardRenderer.ts`)
 and is selected in `src/render/index.ts`.
+
+## Credits / assets
+
+- **Astronaut character** (`src/assets/models/astronaut.glb`): "Astronaut"
+  from the *Ultimate Modular Men* pack by **Quaternius**
+  (https://quaternius.com), released as CC0 / free to use (the pack page now
+  shows the Quaternius Asset License: free, commercial use OK, no credit
+  required, only redistributing the raw files as an asset pack is not
+  allowed). Optimised for the game (clips trimmed, meshes joined, no
+  textures); materials are replaced at load with the game's neon palette.

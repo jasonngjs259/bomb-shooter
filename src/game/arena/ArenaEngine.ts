@@ -13,7 +13,7 @@
  *
  * PER-FRAME READS (live objects; treat as read-only, copy to keep):
  *   getBombs()            every bomb incl. fading ones {id,x,z,colorIndex,state,alpha,age,stuck}
- *   getShooter()          {x,z,yaw,vx,vz,moving,muzzleX,muzzleZ,cooldown}
+ *   getShooter()          {x,z,yaw,vx,vz,ax,az,moving,muzzleX,muzzleZ,cooldown}
  *   getShot()             the in-flight shot or null (max one at a time)
  *   getCurrentBomb(), getNextBomb()   colour indices (BOMB_COLORS)
  *   getAimRay()           muzzle -> first bomb touched (or max range), landing point and
@@ -74,7 +74,7 @@ export class ArenaEngine {
   private bombs: SimBomb[] = []; // all bombs, including fading ones
   private readonly active: SimBomb[] = []; // idle bombs only (refreshActive)
   private readonly shooter: ShooterState = {
-    x: 0, z: 0, yaw: -Math.PI / 2, vx: 0, vz: 0, moving: false, muzzleX: 0, muzzleZ: 0, cooldown: 0,
+    x: 0, z: 0, yaw: -Math.PI / 2, vx: 0, vz: 0, ax: 0, az: 0, moving: false, muzzleX: 0, muzzleZ: 0, cooldown: 0,
   };
   private readonly input = { x: 0, z: 0 };
   private shot: ShotState | null = null;
@@ -276,7 +276,7 @@ export class ArenaEngine {
     this.level = p.level;
     this.bombs = generateField(this.config, p.level, this.random, this.nextId);
     this.nextId += this.bombs.length;
-    Object.assign(this.shooter, { x: 0, z: 0, yaw: -Math.PI / 2, vx: 0, vz: 0, moving: false, cooldown: 0 });
+    Object.assign(this.shooter, { x: 0, z: 0, yaw: -Math.PI / 2, vx: 0, vz: 0, ax: 0, az: 0, moving: false, cooldown: 0 });
     updateMuzzle(this.shooter, this.config);
     this.input.x = this.input.z = 0;
     this.shot = null;

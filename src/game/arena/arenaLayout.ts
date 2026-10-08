@@ -27,10 +27,12 @@ import type { ArenaConfig } from "./types";
  *            with its edge within deflectMargin (1.0) of the border deflects
  *            ("miss", deflected: true, combo reset), and a freshly stuck shot
  *            can't end the game for stuckGrace (1.5 s).
- *   Move     3 u/s top speed, accel 24 / decel 30 u/s^2, centre clamped to
- *            arenaRadius - 0.4 (sliding along the border).
+ *   Move     3 u/s top speed. Velocity follows the input through a
+ *            critically damped spring: omega 22 speeding up (95% in 215 ms),
+ *            26 slowing down (95% in 180 ms), 18 when reversing. Centre
+ *            clamped to arenaRadius - 0.4 (sliding along the border).
  *   Shoot    fire() needs phase "playing", no shot in flight and the 0.25 s
- *            cooldown elapsed. The shot leaves the muzzle (0.7 in front of the
+ *            cooldown elapsed. The shot leaves the muzzle (0.9 in front of the
  *            body) at 18 u/s, straight. Touching an idle bomb -> it sticks at
  *            the contact point (tangent), joins the field and the creep.
  *            After 28 units without contact it fizzles ("miss", combo reset).
@@ -55,9 +57,10 @@ export const ARENA_CONFIG: ArenaConfig = {
 
   shooterRadius: 0.4,
   moveSpeed: 3,
-  moveAccel: 24,
-  moveDecel: 30,
-  muzzleOffset: 0.7,
+  moveAccel: 22,
+  moveDecel: 26,
+  moveReverse: 18,
+  muzzleOffset: 0.9, // measured: the character's arm-cannon tip at combat rest
 
   shotSpeed: 18,
   shotRange: 28,

@@ -3,6 +3,9 @@
 // the game stops with it). React only mounts `root` and renders the radar
 // pass; HUD overlays poll the plain fields below (threats, introT) so
 // nothing re-renders per frame.
+// The player is an Avatar: the animated character once its GLB is parsed
+// (the intro sweep covers the load), the primitive stickman until then and
+// for good if the model can't load or animate (the game never breaks).
 
 import { AmbientLight, Color, DirectionalLight, Group, PerspectiveCamera, PointLight, Vector3 } from "three";
 import { ArenaControls } from "../../arena/ArenaControls";
@@ -16,7 +19,7 @@ import { Debris } from "../three/fx/Debris";
 import { Particles } from "../three/fx/Particles";
 import { bombGlow, colorAt, HEX } from "../three/palette";
 import { makeGlowTexture, makeGlyphAtlas, makeRingTexture } from "../three/textures";
-import { AimLaser } from "./AimLaser";
+import { AimLaser, segmentAEnd } from "./AimLaser";
 import { ArenaBombs, K } from "./ArenaBombs";
 import { ArenaFx } from "./ArenaFx";
 import { Billboards } from "./Billboards";
@@ -25,18 +28,26 @@ import { Ground } from "./Ground";
 import { GroundQuads } from "./GroundQuads";
 import { Radar } from "./Radar";
 import { Sky } from "./Sky";
+import type { Avatar, AvatarFrame } from "./avatar";
+import { Character } from "./character/Character";
+import { parseCharacter } from "./character/loadCharacter";
 import { Stickman } from "./Stickman";
 
 export interface Threat { x: number; y: number; rot: number; d: number; angle: number }
 export interface RadarRect { x: number; y: number; size: number } // css px, top-left origin
 export interface Box { x: number; y: number; w: number; h: number } // css px
+export type CharacterSource = () => Promise<ArrayBuffer>;
+export type AvatarKind = "loading" | "character" | "stickman";
 
 export class ArenaWorld {
   readonly root = new Group();
   readonly chase = new ChaseCamera();
   readonly radar: Radar;
-  readonly stick = new Stickman();
+  readonly stick = new Stickman(); // fallback avatar
   readonly fx: ArenaFx;
+  avatar: Avatar = this.stick;
+  avatarKind: AvatarKind = "stickman";
+  character: Character | null = null;
   readonly threats: Threat[] = [0, 1, 2, 3].map(() => ({ x: 0, y: 0, rot: 0, d: 0, angle: 0 }));
   threatCount = 0;
   radarRect: RadarRect | null = null;
@@ -58,6 +69,8 @@ export class ArenaWorld {
   private readonly decals: GroundQuads;
   private readonly textures = [makeGlowTexture(), makeRingTexture(), makeGlyphAtlas()];
   private readonly muzzleColor = new Color(HEX.cyan);
+  private readonly nextColor = new Color(HEX.cyan);
+  private readonly aimPt = new Vector3();
   private readonly mv = new Vector3();
   private readonly pv = new Vector3();
   private cam: PerspectiveCamera | null = null;
@@ -69,8 +82,15 @@ export class ArenaWorld {
   private quality: "high" | "low" | null = null;
   onIntroDone: (() => void) | null = null;
   private introFired = false;
+  private readonly frameIn: AvatarFrame = {
+    dt: 0, t: 0, x: 0, z: 0, yaw: 0, vx: 0, vz: 0, ax: 0, az: 0, maxSpeed: 3, yawRate: 0, aim: this.aimPt, idleTime: 0,
+    danger: 0, rearDanger: 0, rearAngle: 0, low: false, still: false,
+  };
 
-  constructor(private engine: ArenaEngine, private controls: ArenaControls, private clock: SimClock, bus: TypedEmitter<FxBusEvents>) {
+  constructor(
+    private engine: ArenaEngine, private controls: ArenaControls, private clock: SimClock, bus: TypedEmitter<FxBusEvents>,
+    character?: CharacterSource,
+  ) {
     const r = engine.getConfig().arenaRadius;
     const [glowTex, ringTex, glyphTex] = this.textures;
     this.ground = new Ground(r);
@@ -88,8 +108,51 @@ export class ArenaWorld {
       new AmbientLight("#3B2A6B", 1.4), key, key.target, rim, this.sky.mesh, this.ground.group, this.stick.group,
       this.fxSpace, this.bombs.shadows.mesh, this.bombs.shells, this.decals.mesh, this.laser.group,
     );
-    this.fx = new ArenaFx(engine, this.particles, this.debris, this.glow, this.decals, this.bombs, this.stick, this.chase, clock, bus,
+    this.fx = new ArenaFx(engine, this.particles, this.debris, this.glow, this.decals, this.bombs, () => this.avatar, this.chase, clock, bus,
       (x, y, z) => this.project(x, y, z));
+    if (character) this.loadCharacter(character);
+  }
+
+  // Parse the GLB and swap the character in for the stickman. Any failure
+  // (download, parse, missing bones / clips) keeps the stickman.
+  loadCharacter(source: CharacterSource) {
+    this.avatarKind = "loading";
+    return source()
+      .then(parseCharacter)
+      .then((asset) => {
+        const c = new Character(asset);
+        this.useAvatar(c);
+        this.character = c;
+        this.avatarKind = "character";
+      })
+      .catch((e: unknown) => {
+        console.warn("Arena character unavailable, using the stickman:", e);
+        this.avatarKind = "stickman";
+      });
+  }
+
+  private useAvatar(next: Avatar) {
+    const prev = this.avatar;
+    if (prev === next) return;
+    this.root.remove(prev.group);
+    this.root.add(next.group);
+    this.avatar = next;
+    const phase = this.engine.getPhase();
+    if (phase === "won") next.win();
+    else if (phase === "gameOver") {
+      const s = this.engine.getShooter();
+      next.lose(s.x + 1, s.z);
+    }
+  }
+
+  // A runtime error in the character (e.g. skinning) falls back for good.
+  private fallback(e: unknown) {
+    console.warn("Arena character failed, using the stickman:", e);
+    const c = this.character;
+    this.character = null;
+    this.avatarKind = "stickman";
+    this.useAvatar(this.stick);
+    c?.dispose();
   }
 
   setSize(w: number, h: number) {
@@ -116,6 +179,7 @@ export class ArenaWorld {
   restart() {
     this.fx.reset();
     this.stick.reset();
+    this.character?.reset();
     this.chase.chase();
   }
 
@@ -141,20 +205,39 @@ export class ArenaWorld {
 
     const s = e.getShooter();
     const cfg = e.getConfig();
-    const speed = Math.hypot(s.vx, s.vz);
-    const fwd = speed > 1e-3 ? (s.vx * Math.cos(s.yaw) + s.vz * Math.sin(s.yaw)) / speed : 1;
     const yawRate = dt > 0 ? angleDiff(this.lastYaw, s.yaw) / dt : 0;
     this.lastYaw = s.yaw;
-    this.stick.update(simDt, s.x, s.z, s.yaw, speed / cfg.moveSpeed, fwd, yawRate, !low);
-    this.muzzleColor.lerp(colorAt(bombGlow, e.getCurrentBomb()), 1 - Math.exp(-dt * 20));
-    this.stick.setMuzzleColor(this.muzzleColor);
-
-    // camera
     const sectors = e.getDangerByAngle(16);
     let rear = 0;
+    let rearAngle = 0;
     for (let i = 0; i < 16; i++) {
-      if (Math.abs(angleDiff(s.yaw + Math.PI, sectorCentre(i))) <= Math.PI / 3) rear = Math.max(rear, sectors[i]);
+      if (Math.abs(angleDiff(s.yaw + Math.PI, sectorCentre(i))) <= Math.PI / 3 && sectors[i] > rear) {
+        rear = sectors[i];
+        rearAngle = sectorCentre(i);
+      }
     }
+    // the barrel points at the end of the laser's first segment
+    const ray = e.getAimRay();
+    segmentAEnd(ray, s.yaw, this.aimPt);
+    const f = this.frameIn;
+    f.dt = simDt; f.t = this.realT; f.x = s.x; f.z = s.z; f.yaw = s.yaw;
+    f.vx = s.vx; f.vz = s.vz; f.ax = s.ax; f.az = s.az; f.maxSpeed = cfg.moveSpeed; f.yawRate = simDt > 0 ? yawRate : 0;
+    f.idleTime = this.controls.idleTime; f.danger = e.getDangerLevel(); f.rearDanger = rear; f.rearAngle = rearAngle;
+    f.low = low; f.still = still;
+    this.muzzleColor.lerp(colorAt(bombGlow, e.getCurrentBomb()), 1 - Math.exp(-dt * 20));
+    this.nextColor.lerp(colorAt(bombGlow, e.getNextBomb()), 1 - Math.exp(-dt * 20));
+    try {
+      this.avatar.update(f);
+    } catch (err) {
+      if (this.avatar === this.stick) throw err;
+      this.fallback(err);
+      this.stick.update(f);
+    }
+    this.avatar.setColors(this.muzzleColor, this.nextColor);
+
+    // camera (after the character's aim pass, same dt)
+    this.chase.mouse = this.controls.yawSource === "mouse";
+    this.chase.fwdSpeed = s.vx * Math.cos(this.chase.yaw) + s.vz * Math.sin(this.chase.yaw);
     this.chase.update(camera, dt, s.x, s.z, s.yaw, this.W / this.H, e.getDangerLevel(), rear, this.fx.shakeX, this.fx.shakeY);
     if (!this.introFired && this.chase.introDone && this.chase.introT >= INTRO_TIME) {
       this.introFired = true;
@@ -164,13 +247,12 @@ export class ArenaWorld {
     this.glow.begin();
     this.decals.begin();
     this.fx.update(simDt);
-    const ray = e.getAimRay();
     const want = this.playing && e.getPhase() === "playing" && !e.getShot() && s.cooldown <= 0 ? 1 : 0;
     this.aimAlpha = want ? Math.min(1, this.aimAlpha + dt / 0.12) : 0;
-    this.bombs.frame(e, this.stick, { t: this.realT, still, low, colourAssist: settings.colourAssist, showPop: this.aimAlpha > 0.5 });
+    this.bombs.frame(e, this.avatar, { t: this.realT, still, low, colourAssist: settings.colourAssist, showPop: this.aimAlpha > 0.5 });
     this.glow.end();
     this.decals.end();
-    this.laser.update(ray, this.stick.muzzleWorld(this.mv), s.yaw, this.muzzleColor, this.realT, this.aimAlpha, still, this.laserWide);
+    this.laser.update(ray, this.avatar.muzzleWorld(this.mv), s.yaw, this.muzzleColor, this.realT, this.aimAlpha, still, this.laserWide);
 
     this.ground.update({
       time: this.realT, danger: e.getDangerLevel(), sectors, playerX: s.x, playerZ: s.z, low,
@@ -258,6 +340,7 @@ export class ArenaWorld {
     this.decals.dispose();
     this.radar.dispose();
     this.stick.dispose();
+    this.character?.dispose();
     this.textures.forEach((t) => t.dispose());
   }
 }
