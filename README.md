@@ -26,6 +26,7 @@ npx expo start
 
 Other scripts: `npm run ios`, `npm run android`, `npm run typecheck`.
 Engine sanity check (headless): `npx tsx scripts/engine-sanity.ts`.
+Renderer fallback + layout check (headless): `npx tsx scripts/renderer-fallback.ts`.
 
 ## Controls
 
@@ -66,6 +67,15 @@ quality tier automatically if the first 120 frames average over 20 ms.
 Renderer code lives in `src/render/three/` (`world/` scene parts, `fx/` effect
 pools); switch renderers in `src/render/index.ts`.
 
+**2D fallback.** The board is mounted through `src/render/adaptive/`, which
+runs the 3D renderer when WebGL works and the plain-View 2D renderer
+(`src/render/basic/`) otherwise, with a small "3D graphics unavailable —
+running in 2D mode" notice and a **Retry 3D** button. Web probes for WebGL2
+before mounting the canvas; a lost context is `preventDefault()`ed and the
+canvas remounts when the browser restores it; no restore within 4 s, a second
+loss in the same browser session, or any renderer error (error boundary, also
+on native) switches to 2D. State machine: `src/render/status/`.
+
 ## Project structure
 
 ```
@@ -74,7 +84,9 @@ src/game/                   Framework-free engine: types, constants, hex grid,
                             physics, animation, GameEngine, useGameEngine hook
 src/input/                  Pointer / touch / keyboard -> engine commands
 src/render/                 Renderer contract, layout fitting, basic RN renderer
-src/render/three/           three.js / react-three-fiber 3D renderer (active)
+src/render/three/           three.js / react-three-fiber 3D renderer
+src/render/adaptive/        Active renderer: 3D with automatic 2D fallback
+src/render/status/          WebGL probe + context-loss / fallback state
 src/ui/                     HUD, title, pause, game-over card, hints, theme
 src/fx/bus.ts               Renderer <-> UI presentation events
 src/game/clock.ts           Hit-stop / slow motion / pause clock

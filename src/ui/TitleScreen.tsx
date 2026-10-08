@@ -9,8 +9,13 @@ import { Button, IconButton } from "./Button";
 import { formatScore } from "./Hud";
 import { fonts, palette } from "./theme";
 import { titleLayout } from "./titleLayout";
+import { boxGlow, textGlow } from "./webSafe";
 
 const native = Platform.OS !== "web";
+const TAGLINE = "MATCH 3 · CHAIN THE BLAST · DON'T CROSS THE LINE";
+// Two balanced lines where the single line (~440pt with its backing) won't
+// fit (titleLayout decides; it also reserves the height).
+const TAGLINE_2 = "MATCH 3 · CHAIN THE BLAST\nDON'T CROSS THE LINE";
 
 interface Props {
   width: number;
@@ -98,7 +103,9 @@ export function TitleScreen({ width, height, best, still, detonating, topInset, 
         <Text style={[logoStyle, { right: width - (tl.slotX - half) + fs * 0.04, textAlign: "right" }]}>B</Text>
         <Text style={[logoStyle, { left: tl.slotX + half + fs * 0.04 }]}>MB</Text>
         <Text style={[styles.sub, { fontSize: fs * 0.6, top: tl.subY - fs * 0.38, letterSpacing: fs * 0.12 }]}>SHOOTER</Text>
-        <Text style={[styles.tag, { top: tl.subY + fs * 0.42 }]}>MATCH 3 · CHAIN THE BLAST · DON'T CROSS THE LINE</Text>
+        <View style={[styles.tagRow, { top: tl.tagY }]}>
+          <Text style={styles.tag}>{tl.tagLines === 2 ? TAGLINE_2 : TAGLINE}</Text>
+        </View>
       </Animated.View>
 
       <Animated.View
@@ -137,9 +144,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     color: palette.textPrimary,
     letterSpacing: 2,
-    textShadowColor: palette.magenta,
-    textShadowRadius: 14,
-    textShadowOffset: { width: 0, height: 0 },
+    ...textGlow(palette.magenta, 14, 3),
   },
   sub: {
     position: "absolute",
@@ -148,19 +153,22 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontFamily: fonts.display,
     color: palette.cyan,
-    textShadowColor: palette.cyan,
-    textShadowRadius: 12,
-    textShadowOffset: { width: 0, height: 0 },
+    ...textGlow(palette.cyan, 12, 2),
   },
+  // Dark translucent backing: the tagline sits over the bright sun.
+  tagRow: { position: "absolute", left: 16, right: 16, alignItems: "center" },
   tag: {
-    position: "absolute",
-    left: 16,
-    right: 16,
     textAlign: "center",
     fontFamily: fonts.label,
     fontSize: 13,
+    lineHeight: 18,
     letterSpacing: 2,
-    color: palette.textSecondary,
+    color: palette.textPrimary,
+    backgroundColor: "rgba(11, 4, 32, 0.72)",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: "hidden",
   },
   playWrap: { position: "absolute", left: 16, right: 16, alignItems: "center", gap: 14 },
   playGlow: {
@@ -171,10 +179,7 @@ const styles = StyleSheet.create({
     borderRadius: 38,
     borderWidth: 2,
     borderColor: palette.cyan,
-    shadowColor: palette.magenta,
-    shadowOpacity: 0.9,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 0 },
+    ...boxGlow(palette.magenta, 18, 0.9),
   },
   best: { fontFamily: fonts.label, fontSize: 16, letterSpacing: 2, color: palette.textSecondary },
   bestValue: { fontFamily: fonts.score, fontSize: 22, color: palette.gold },

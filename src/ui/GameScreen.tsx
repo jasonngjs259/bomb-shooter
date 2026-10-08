@@ -17,6 +17,7 @@ import { computeGameLayout } from "./gameLayout";
 import { GameOverOverlay } from "./GameOverOverlay";
 import { HudBar, HudSide } from "./Hud";
 import { PauseMenu } from "./PauseMenu";
+import { RendererNotice } from "./RendererNotice";
 import { ScreenFlash } from "./ScreenFlash";
 import { reduceMotion, useSettings } from "./settings";
 import { palette } from "./theme";
@@ -171,7 +172,7 @@ export function GameScreen() {
 
       {!showTitle && !gl.desktop && (
         <View style={[styles.abs, { left: gl.bar.left, top: gl.bar.top, width: gl.bar.width }]}>
-          <HudBar {...hudProps} />
+          <HudBar {...hudProps} width={gl.bar.width} />
         </View>
       )}
       {!showTitle && gl.desktop && (
@@ -219,6 +220,7 @@ export function GameScreen() {
         <PauseMenu title="PAUSED" onResume={() => setPaused(false)} onRestart={restart} onMenu={toMenu} />
       )}
       {settingsOpen && showTitle && <PauseMenu title="SETTINGS" onResume={() => setSettingsOpen(false)} />}
+      {!paused && !settingsOpen && !endVisible && <RendererNotice bottom={insets.bottom + 6} />}
     </View>
   );
 }

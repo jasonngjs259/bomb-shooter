@@ -11,6 +11,9 @@ export interface BoardLayout {
   height: number;
   containerWidth: number;
   containerHeight: number;
+  // Optional: container y where open sky starts (below any HUD bar). The 3D
+  // backdrop uses it to keep the sun visible; renderers may ignore it.
+  skyTop?: number;
 }
 
 // Largest uniform scale that fits the board, centred in the container.

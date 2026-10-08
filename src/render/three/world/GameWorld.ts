@@ -22,6 +22,7 @@ import { BoardFrame, SLAB_HEIGHT } from "./BoardFrame";
 import { BombBatch } from "./BombBatch";
 import { Cannon } from "./Cannon";
 import { DEG, clamp01, easeOutBack } from "./easing";
+import { placeSky } from "./sky";
 import { TitleScene } from "./TitleScene";
 
 const FOV = 30;
@@ -62,6 +63,9 @@ export class GameWorld {
   private readonly magenta = color(HEX.magenta);
   private readonly white = color(HEX.white);
   private lastCam = "";
+  private lastCamera: PerspectiveCamera | null = null;
+  private horizon = -1;
+  private sunR = -1;
 
   constructor(private engine: GameEngineView) {
     const m = engine.getBoardMetrics();
@@ -164,8 +168,10 @@ export class GameWorld {
     camera.position.set(cx + fx.shakeX, -cy + fx.shakeY, D);
     camera.rotation.set(0, 0, 0);
     const camKey = `${W}|${H}|${D}`;
-    if (camKey !== this.lastCam || camera.fov !== FOV) {
+    // a remounted canvas (context restore) brings a fresh camera
+    if (camKey !== this.lastCam || camera !== this.lastCamera || camera.fov !== FOV) {
       this.lastCam = camKey;
+      this.lastCamera = camera;
       camera.fov = FOV;
       camera.aspect = W / H;
       camera.near = Math.max(1, D - 1200);
@@ -178,9 +184,14 @@ export class GameWorld {
     const aimTarget = title || still ? 0 : -Math.sin((90 - shooter.angle) * DEG) * 8;
     this.parallaxV += (120 * (aimTarget - this.parallax) - 20 * this.parallaxV) * dt;
     this.parallax += this.parallaxV * dt;
+    // Sun + horizon follow the free sky; eased so title -> game glides.
+    const sky = placeSky(layout, title, 12, SLAB_HEIGHT);
+    const ease = this.horizon < 0 || still ? 1 : 1 - Math.exp(-dt * 5);
+    this.horizon += (sky.horizon - this.horizon) * ease;
+    this.sunR += (sky.sunR - this.sunR) * ease;
     this.bg.update({
       width: W, height: H, time: this.realT, scroll: still || low ? 0 : this.realT * 0.25,
-      horizon: W >= 900 ? 0.45 : 0.38, parallax: this.parallax, heat: clamp01((danger - 0.7) / 0.3),
+      horizon: this.horizon, sunR: this.sunR, parallax: this.parallax, heat: clamp01((danger - 0.7) / 0.3),
       pulse: fx.gridPulse, fade: clamp01(this.realT / 0.6), stars: low ? 0.2 : 0.55,
       vignette: title ? 0 : 0.35 * danger * danger,
     });
@@ -198,7 +209,6 @@ export class GameWorld {
     this.glow.end();
     this.rings.end();
     this.shadows.end();
-    this.cannon.light.visible = !low && !title;
   }
 
   private drawBoard(dt: number, simDt: number, danger: number, still: boolean, low: boolean, phase: string) {

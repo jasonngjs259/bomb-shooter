@@ -7,6 +7,7 @@ import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native
 import { Button } from "./Button";
 import { formatScore } from "./Hud";
 import { fonts, palette, spacing } from "./theme";
+import { textGlow } from "./webSafe";
 
 const native = Platform.OS !== "web";
 
@@ -94,7 +95,7 @@ export function GameOverOverlay({ won, score, best, isNewBest, biggestCombo, sti
               </Animated.Text>
             </>
           )}
-          <Text style={[styles.title, { color: titleColor, textShadowColor: titleColor, fontSize: won ? 24 : 30 }]}>{title}</Text>
+          <Text style={[styles.title, { color: titleColor, fontSize: won ? 24 : 30 }, textGlow(titleColor, 14)]}>{title}</Text>
         </View>
         {won && (
           <View style={styles.stars}>
@@ -149,12 +150,10 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 32,
     textAlign: "center",
-    textShadowRadius: 14,
-    textShadowOffset: { width: 0, height: 0 },
   },
-  split: { position: "absolute", left: 0, right: 0, textShadowRadius: 0 },
+  split: { position: "absolute", left: 0, right: 0 },
   stars: { flexDirection: "row", gap: 10 },
-  star: { fontSize: 34, color: palette.gold, textShadowColor: palette.gold, textShadowRadius: 10, textShadowOffset: { width: 0, height: 0 } },
+  star: { fontSize: 34, color: palette.gold, ...textGlow(palette.gold, 10) },
   rows: { alignSelf: "stretch", gap: 6, marginVertical: spacing.sm },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   rowLabel: { fontFamily: fonts.label, fontSize: 15, letterSpacing: 1.5, color: palette.textSecondary },

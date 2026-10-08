@@ -19,6 +19,7 @@ uniform vec2 uRes;
 uniform float uTime;
 uniform float uScroll;
 uniform float uHorizon;
+uniform float uSunR;
 uniform float uParallax;
 uniform float uHeat;
 uniform float uPulse;
@@ -47,7 +48,7 @@ void main() {
       col += cStar * tw * (smoothstep(1.8, 0.0, d) + 0.25 * smoothstep(5.0, 0.0, d)) * (1.0 - t * 0.6);
     }
     // sun: centred above the horizon, slits in its lower part
-    float R = min(0.26 * uRes.x, 220.0);
+    float R = uSunR;
     vec2 sc = vec2(cx + uParallax * 0.3, hy - R * 0.55);
     float sd = length(p - sc);
     float inside = smoothstep(R + 1.0, R - 1.0, sd);
@@ -125,6 +126,7 @@ export class Background {
         uTime: { value: 0 },
         uScroll: { value: 0 },
         uHorizon: { value: 0.38 },
+        uSunR: { value: 101 },
         uParallax: { value: 0 },
         uHeat: { value: 0 },
         uPulse: { value: 1 },
@@ -158,7 +160,7 @@ export class Background {
   }
 
   update(o: {
-    width: number; height: number; time: number; scroll: number; horizon: number; parallax: number;
+    width: number; height: number; time: number; scroll: number; horizon: number; sunR: number; parallax: number;
     heat: number; pulse: number; fade: number; stars: number; vignette: number;
   }) {
     const u = this.bg.uniforms;
@@ -166,6 +168,7 @@ export class Background {
     u.uTime.value = o.time;
     u.uScroll.value = o.scroll;
     u.uHorizon.value = o.horizon;
+    u.uSunR.value = o.sunR;
     u.uParallax.value = o.parallax;
     u.uHeat.value = o.heat;
     u.uPulse.value = o.pulse;

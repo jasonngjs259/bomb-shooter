@@ -1,13 +1,15 @@
 // Native GL canvas: react-three-fiber on expo-gl (bundled in Expo Go).
 // Wrapped in a pointerEvents="none" view so R3F's PanResponder overlay never
-// competes with the gesture handler on the board area.
+// competes with the gesture handler on the board area. expo-gl has no
+// context-loss events; creation/render failures reach the error boundary
+// in ThreeBoard, which falls back to the 2D renderer.
 
 import { Canvas } from "@react-three/fiber/native";
-import { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { ACESFilmicToneMapping, SRGBColorSpace } from "three";
+import type { GameCanvasProps } from "./GameCanvas";
 
-export function GameCanvas({ children }: { children: ReactNode }) {
+export function GameCanvas({ children }: GameCanvasProps) {
   return (
     <View style={styles.fill}>
       <Canvas

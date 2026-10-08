@@ -1,6 +1,8 @@
 // In-world text as RN views over the GL canvas (no troika/drei text on
 // native): "+score" floats, "+20" drop bonuses and the "xN COMBO!" label.
-// Spawned from the FX bus; animated with the native driver.
+// Spawned from the FX bus; animated with the native driver. On web the
+// labels have no blurred text-shadow and get their own compositor layer:
+// they animate every frame right above the WebGL canvas (see webSafe.ts).
 
 import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Platform, StyleSheet } from "react-native";
@@ -8,6 +10,7 @@ import { FxBusEvents, getFxBus } from "../../fx/bus";
 import { GameEngineView } from "../../game/types";
 import { BoardLayout } from "../layout";
 import { fonts, palette } from "../../ui/theme";
+import { ownLayer, textGlow } from "../../ui/webSafe";
 
 type FloatText = FxBusEvents["floatText"] & { id: number };
 
@@ -56,8 +59,8 @@ function FloatLabel({ item, layout, onDone }: { item: FloatText; layout: BoardLa
       style={[
         isCombo ? styles.combo : styles.score,
         {
-          left, top, width, fontSize, color: tint, textShadowColor: tint,
-          opacity, transform: [{ translateY: rise }, { scale }],
+          left, top, width, fontSize, color: tint, ...textGlow(tint, isCombo ? 16 : 10),
+          opacity, transform: [...ownLayer, { translateY: rise }, { scale }],
         },
       ]}
     >
@@ -92,8 +95,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     textAlign: "center",
     fontFamily: fonts.button,
-    textShadowRadius: 10,
-    textShadowOffset: { width: 0, height: 0 },
     pointerEvents: "none",
   },
   combo: {
@@ -101,8 +102,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontFamily: fonts.display,
     letterSpacing: 1,
-    textShadowRadius: 16,
-    textShadowOffset: { width: 0, height: 0 },
     pointerEvents: "none",
   },
 });

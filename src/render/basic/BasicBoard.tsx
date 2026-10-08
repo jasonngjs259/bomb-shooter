@@ -4,14 +4,14 @@
 
 import { memo } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { BOMB_COLORS } from "../../game/constants";
 import { BoardRendererProps } from "../BoardRenderer";
-import { colors } from "../../ui/theme";
+import { BOMB_HEX, colors } from "../../ui/theme";
 import { AimGuide } from "./AimGuide";
 import { Bubble } from "./Bubble";
 import { ScorePopups } from "./ScorePopups";
 
-const colorOf = (index: number) => BOMB_COLORS[index] ?? "#888888";
+// Same bomb colours as the 3D board and the HUD NEXT dot.
+const colorOf = (index: number): string => BOMB_HEX[index]?.base ?? "#888888";
 
 function BasicBoard({ engine, layout, showAimGuide }: BoardRendererProps) {
   const s = layout.scale;

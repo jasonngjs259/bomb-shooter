@@ -1,11 +1,13 @@
 // Neon buttons. primary = cyan->magenta gradient with dark ink label (6.4:1),
 // secondary = panel fill with a cyan stroke. Pressed: scale 0.96 + dim;
-// hover (web): brighter glow; keyboard focus: 2pt cyan ring.
+// hover (web): white wash / brighter stroke; keyboard focus: 2pt cyan ring.
+// Blurred glows are native-only (see webSafe.ts).
 
 import { LinearGradient } from "expo-linear-gradient";
 import { ReactNode, useState } from "react";
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { fonts, gradients, palette } from "./theme";
+import { boxGlow, IS_WEB } from "./webSafe";
 
 interface ButtonProps {
   label: string;
@@ -81,16 +83,10 @@ export function IconButton({ label, onPress, children }: { label: string; onPres
 
 const styles = StyleSheet.create({
   base: { alignItems: "center", justifyContent: "center", overflow: "visible", cursor: "pointer" },
-  primaryGlow: {
-    shadowColor: palette.magenta,
-    shadowOpacity: 0.6,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-  },
-  primaryHover: { shadowRadius: 12, shadowOpacity: 0.9 },
+  primaryGlow: boxGlow(palette.magenta, 6, 0.6, 8),
+  primaryHover: boxGlow(palette.magenta, 12, 0.9, 8),
   secondary: { backgroundColor: palette.panelSolid, borderWidth: 2, borderColor: palette.cyan },
-  secondaryHover: { shadowColor: palette.cyan, shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } },
+  secondaryHover: IS_WEB ? { borderColor: palette.textPrimary } : boxGlow(palette.cyan, 12, 0.6),
   hoverWash: { backgroundColor: "rgba(255,255,255,0.12)" },
   focus: { outlineColor: palette.cyan, outlineWidth: 2, outlineStyle: "solid", outlineOffset: 3 },
   pressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },

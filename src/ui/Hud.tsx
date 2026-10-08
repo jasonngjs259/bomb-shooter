@@ -1,11 +1,14 @@
 // In-game HUD. Phone: a 56pt panel bar (score left, slam pips centre, pause
 // right) with BEST underneath. Desktop (>= 900pt): two side panels next to
 // the board. The score bumps (1 -> 1.12 -> 1, gold flash) when it changes.
+// The score font is sized from the space it gets so "000,000" never wraps
+// (see hudMetrics.ts).
 
 import { memo, useEffect, useRef } from "react";
 import { Animated, Platform, StyleSheet, Text, View } from "react-native";
 import { CEILING_EVERY_SHOTS } from "../game/constants";
 import { IconButton } from "./Button";
+import { BAR_BORDER, BAR_GAP, BAR_PAD, barScoreWidth, PANEL_INNER, scoreFontFor } from "./hudMetrics";
 import { BOMB_HEX, fonts, palette, spacing } from "./theme";
 
 const native = Platform.OS !== "web";
@@ -44,11 +47,18 @@ function ScoreText({ score, size }: { score: number; size: number }) {
   const bump = useBump(score);
   const scale = bump.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.12, 1] });
   const flash = bump.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 0] });
+  const text = padScore(score);
   return (
     <View>
-      <Animated.Text style={[styles.score, { fontSize: size, transform: [{ scale }] }]}>{padScore(score)}</Animated.Text>
-      <Animated.Text style={[styles.score, styles.scoreFlash, { fontSize: size, opacity: flash, transform: [{ scale }] }]}>
-        {padScore(score)}
+      <Animated.Text numberOfLines={1} adjustsFontSizeToFit style={[styles.score, { fontSize: size, transform: [{ scale }] }]}>
+        {text}
+      </Animated.Text>
+      <Animated.Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        style={[styles.score, styles.scoreFlash, { fontSize: size, opacity: flash, transform: [{ scale }] }]}
+      >
+        {text}
       </Animated.Text>
     </View>
   );
@@ -75,16 +85,21 @@ function PauseGlyph() {
   );
 }
 
-export const HudBar = memo(function HudBar({ score, best, combo, shotsUntilCeiling, onPause }: HudProps) {
+export const HudBar = memo(function HudBar({
+  score, best, combo, shotsUntilCeiling, onPause, width,
+}: HudProps & { width: number }) {
+  const leftW = barScoreWidth(width);
   return (
     <View style={styles.bar}>
-      <View style={styles.barLeft}>
-        <Text style={styles.label}>SCORE{combo > 1 ? `  ·  x${Math.min(combo, 5)}` : ""}</Text>
-        <ScoreText score={score} size={26} />
+      <View style={[styles.barLeft, { width: leftW }]}>
+        <Text numberOfLines={1} style={styles.label}>
+          SCORE{combo > 1 ? `  ·  x${Math.min(combo, 5)}` : ""}
+        </Text>
+        <ScoreText score={score} size={scoreFontFor(leftW, 26)} />
       </View>
       <View style={styles.barCentre}>
         <SlamPips shotsUntilCeiling={shotsUntilCeiling} />
-        <Text style={styles.best}>
+        <Text numberOfLines={1} style={styles.best}>
           BEST <Text style={styles.bestValue}>{formatScore(Math.max(best, score))}</Text>
         </Text>
       </View>
@@ -102,7 +117,7 @@ export const HudSide = memo(function HudSide({
     return (
       <View style={styles.panel}>
         <Text style={styles.label}>SCORE</Text>
-        <ScoreText score={score} size={36} />
+        <ScoreText score={score} size={scoreFontFor(PANEL_INNER, 36)} />
         <Text style={[styles.label, styles.gap]}>BEST</Text>
         <Text style={styles.bestBig}>{formatScore(Math.max(best, score))}</Text>
         <Text style={[styles.label, styles.gap]}>COMBO</Text>
@@ -139,17 +154,16 @@ const styles = StyleSheet.create({
     height: 56,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: BAR_PAD,
     backgroundColor: palette.panel,
-    borderBottomWidth: 1.5,
     borderColor: palette.panelBorder,
     borderRadius: 16,
-    borderWidth: 1.5,
+    borderWidth: BAR_BORDER,
   },
-  barLeft: { flex: 1 },
-  barCentre: { flex: 1, alignItems: "center", gap: 4 },
+  barLeft: { flexShrink: 0 },
+  barCentre: { flex: 1, minWidth: 0, alignItems: "center", gap: 4, marginRight: BAR_GAP },
   label: { fontFamily: fonts.label, fontSize: 13, letterSpacing: 2, color: palette.textSecondary },
-  score: { fontFamily: fonts.score, color: palette.textPrimary, fontVariant: ["tabular-nums"], minWidth: 132 },
+  score: { fontFamily: fonts.score, color: palette.textPrimary, fontVariant: ["tabular-nums"], transformOrigin: "left center" },
   scoreFlash: { position: "absolute", left: 0, top: 0, color: palette.gold },
   best: { fontFamily: fonts.label, fontSize: 13, letterSpacing: 1.5, color: palette.textSecondary },
   bestValue: { fontFamily: fonts.score, fontSize: 13, color: palette.gold },

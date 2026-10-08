@@ -1,13 +1,17 @@
 // The 3D renderer component: a full-container GL canvas (background + board
 // + FX) with RN text overlays on top. It ignores `frame`: the world reads the
 // engine every GL frame, so React never re-renders during play.
+// The canvas sits in an error boundary and remounts with a fresh context
+// (key = status epoch) after a WebGL context restore; see render/status.
 
 import { memo, useEffect, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { BoardRendererProps } from "../BoardRenderer";
+import { rendererStatus, useRendererStatus } from "../status";
 import { fonts, palette } from "../../ui/theme";
 import { FxTextOverlay } from "./FxTextOverlay";
 import { GameCanvas } from "./GameCanvas";
+import { GLErrorBoundary } from "./GLErrorBoundary";
 import { SceneRoot } from "./SceneRoot";
 import { GameWorld } from "./world/GameWorld";
 
@@ -15,6 +19,7 @@ function ThreeBoard({ engine, layout, showAimGuide, scene = "game" }: BoardRende
   const worldRef = useRef<GameWorld | null>(null);
   if (worldRef.current === null) worldRef.current = new GameWorld(engine);
   const world = worldRef.current;
+  const { epoch, restoring } = useRendererStatus();
 
   useEffect(() => {
     world.setLayout(layout);
@@ -29,10 +34,17 @@ function ThreeBoard({ engine, layout, showAimGuide, scene = "game" }: BoardRende
   const s = layout.scale;
   return (
     <View style={styles.fill}>
-      <GameCanvas>
-        <SceneRoot world={world} />
-      </GameCanvas>
-      {scene === "game" && (
+      <GLErrorBoundary onError={rendererStatus.failed}>
+        <GameCanvas
+          key={epoch}
+          onContextLost={rendererStatus.contextLost}
+          onContextRestored={rendererStatus.contextRestored}
+          hidden={restoring}
+        >
+          <SceneRoot world={world} />
+        </GameCanvas>
+      </GLErrorBoundary>
+      {scene === "game" && !restoring && (
         <Text
           style={[
             styles.next,

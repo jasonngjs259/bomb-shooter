@@ -1,10 +1,17 @@
 // 3D launcher: domed turret with a neon ring in the loaded bomb's glow
 // colour, a barrel that springs toward the aim angle and recoils on fire, a
-// muzzle ring, the NEXT socket and the shooter point light. It also places
-// the loaded and next bombs (reload slide, pop-in, swap arcs).
+// muzzle ring and the NEXT socket. It also places the loaded and next bombs
+// (reload slide, pop-in, swap arcs).
+//
+// The loaded, next and in-flight bombs are drawn exactly like board bombs
+// (same material, same emissive 0.35, same halo). There is deliberately no
+// shooter point light: a light 40u from the loaded bomb, tinted by the glow
+// colour, plus a 0.9 emissive boost pushed those bombs past ACES' shoulder
+// and washed them out (blue -> lavender, purple -> pink). The fire "flash"
+// now lights the turret itself through emissive instead.
 
 import {
-  Color, CylinderGeometry, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, PointLight,
+  Color, CylinderGeometry, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial,
   SphereGeometry, TorusGeometry, Vector3,
 } from "three";
 import { BombState, NextBombState, ShooterState } from "../../../game/types";
@@ -13,8 +20,8 @@ import { bombGlow, color, colorAt, HEX } from "../palette";
 import { DEG, clamp01, easeInOutCubic, easeOutBack, easeOutCubic, easeOutQuad, lerp } from "./easing";
 
 const BARREL_LEN = 58;
-const LIGHT_BASE = 6.3; // spec 2.0 (legacy units) x PI
-const LIGHT_FLASH = 19;
+// Same emissive as board bombs (BombBatch board default).
+export const BOMB_GLOW = 0.35;
 
 export class Cannon {
   readonly group = new Group();
@@ -24,8 +31,8 @@ export class Cannon {
   private readonly dome: Mesh;
   private readonly ring: Mesh;
   private readonly socket: Mesh;
-  readonly light: PointLight;
   private readonly glowColor = new Color();
+  private readonly emissive = new Color();
   private readonly materials: Material[] = [];
   private angle = 90; // displayed barrel angle (deg)
   private omega = 0;
@@ -66,9 +73,7 @@ export class Cannon {
       new TorusGeometry(19, 1.3, 8, 40),
       reg(new MeshBasicMaterial({ color: HEX.panelBorder, toneMapped: false, fog: false, transparent: true, opacity: 0.8 }))
     );
-    this.light = new PointLight("#ffffff", LIGHT_BASE, 260, 0);
-    this.light.position.set(0, 0, 40);
-    this.group.add(this.dome, this.ring, this.barrelPivot, this.socket, this.light);
+    this.group.add(this.dome, this.ring, this.barrelPivot, this.socket);
   }
 
   setNextOffset(dx: number) {
@@ -92,7 +97,7 @@ export class Cannon {
     return out.add(this.group.position);
   }
 
-  update(dt: number, shooter: ShooterState, bomb: BombState, lightOn: boolean) {
+  update(dt: number, shooter: ShooterState, bomb: BombState, flashOn: boolean) {
     this.group.position.set(shooter.x, -shooter.y, 0);
     // Barrel spring toward the aim (stiffness 400, damping 30), clamped +-80
     const target = Math.max(10, Math.min(170, shooter.angle));
@@ -118,12 +123,14 @@ export class Cannon {
     this.glowColor.lerp(target3, 1 - Math.exp(-dt * 20));
     (this.ring.material as MeshBasicMaterial).color.copy(this.glowColor);
     (this.muzzle.material as MeshBasicMaterial).color.copy(this.glowColor);
-    this.light.color.copy(this.glowColor);
     this.flashT += dt;
     const ft = this.flashT * 1000;
-    const flash = ft < 40 ? ft / 40 : ft < 120 ? 1 - (ft - 40) / 80 : 0;
-    this.light.intensity = lerp(LIGHT_BASE, LIGHT_FLASH, flash);
-    this.light.visible = lightOn;
+    const flash = flashOn ? (ft < 40 ? ft / 40 : ft < 120 ? 1 - (ft - 40) / 80 : 0) : 0;
+    // turret picks up the glow colour, flaring briefly on fire (was the light)
+    this.emissive.copy(this.glowColor).multiplyScalar(0.1 + 0.55 * flash);
+    (this.barrel.material as MeshStandardMaterial).emissive.copy(this.emissive);
+    this.emissive.copy(this.glowColor).multiplyScalar(0.06 + 0.3 * flash);
+    (this.dome.material as MeshStandardMaterial).emissive.copy(this.emissive);
 
     // Reload starts when the bomb reappears loaded after a shot
     if (bomb.visible && !bomb.inFlight && !this.prevVisible) this.reloadT = 0;
@@ -162,13 +169,13 @@ export class Cannon {
       npy = sy - Math.sin(a) * r * 0.7;
       nScale = lerp(1, 0.75, se);
     }
-    d.x = npx; d.y = npy; d.scale = nScale; d.colorIndex = next.colorIndex; d.glow = 0.35; d.spark = flicker * 0.9;
+    d.x = npx; d.y = npy; d.scale = nScale; d.colorIndex = next.colorIndex; d.glow = BOMB_GLOW; d.spark = flicker * 0.9;
     batch.add();
 
     if (!bomb.visible) return;
     reset();
     d.colorIndex = bomb.colorIndex;
-    d.glow = 0.9;
+    d.glow = BOMB_GLOW;
     d.spark = flicker;
     if (bomb.inFlight) {
       d.x = bomb.x; d.y = -bomb.y; d.scale = 1; d.rotZ = -(this.angle - 90) * DEG * 0.3;
