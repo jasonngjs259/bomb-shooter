@@ -20,6 +20,9 @@ export interface BoardRendererProps {
   layout: BoardLayout;
   // True while the player is aiming (finger down, mouse hover, keyboard).
   showAimGuide: boolean;
+  // Which screen the UI shows. Optional: renderers that have no title scene
+  // can ignore it. "title" lets a renderer draw its own title backdrop.
+  scene?: "title" | "game";
 }
 
 export interface BoardRenderer {

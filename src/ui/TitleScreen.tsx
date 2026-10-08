@@ -1,43 +1,192 @@
-import { Platform, StyleSheet, Text, View } from "react-native";
-import { BoardLayout } from "../render/layout";
-import { BoardOverlay } from "./BoardOverlay";
-import { Button } from "./Button";
-import { colors, fontSizes, spacing } from "./theme";
+// Title screen overlay (the first impression). The 3D scene behind it draws
+// the lit-fuse bomb that stands in for the logo's "O" and the bomb pile; this
+// view draws the neon logo text (sign-tube ignite flicker), the PLAY button
+// (scales in, then breathes) and BEST. Tap anywhere to skip the intro.
 
-const CONTROLS =
-  Platform.OS === "web"
-    ? ["Mouse: aim, click to fire", "Arrows / A D: aim, Space: fire", "X or Shift: swap bomb"]
-    : ["Drag to aim, release to fire", "Tap the NEXT bomb to swap"];
+import { useEffect, useMemo, useRef } from "react";
+import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Button, IconButton } from "./Button";
+import { formatScore } from "./Hud";
+import { fonts, palette } from "./theme";
+import { titleLayout } from "./titleLayout";
 
-export function TitleScreen({ layout, best, onPlay }: { layout: BoardLayout; best: number; onPlay: () => void }) {
+const native = Platform.OS !== "web";
+
+interface Props {
+  width: number;
+  height: number;
+  best: number;
+  still: boolean; // reduced motion
+  detonating: boolean;
+  topInset: number;
+  onPlay: () => void;
+  onSettings: () => void;
+}
+
+function GearGlyph() {
   return (
-    <BoardOverlay layout={layout}>
-      <Text style={styles.title}>BOMB{"\n"}SHOOTER</Text>
-      <Text style={styles.subtitle}>Match 3 to pop. Don't let them reach the line.</Text>
-      <Button label="PLAY" onPress={onPlay} />
-      {best > 0 && <Text style={styles.best}>Best {best}</Text>}
-      <View style={styles.controls}>
-        {CONTROLS.map((line) => (
-          <Text key={line} style={styles.control}>
-            {line}
+    <View style={styles.gear}>
+      {[0, 45, 90, 135].map((r) => (
+        <View key={r} style={[styles.gearTooth, { transform: [{ rotate: `${r}deg` }] }]} />
+      ))}
+      <View style={styles.gearRing} />
+    </View>
+  );
+}
+
+export function TitleScreen({ width, height, best, still, detonating, topInset, onPlay, onSettings }: Props) {
+  const tl = titleLayout(width, height);
+  const logo = useRef(new Animated.Value(0)).current;
+  const play = useRef(new Animated.Value(0)).current;
+  const breathe = useRef(new Animated.Value(0)).current;
+  const out = useRef(new Animated.Value(0)).current;
+
+  const intro = useMemo(() => {
+    if (still) {
+      return Animated.parallel([
+        Animated.timing(logo, { toValue: 1, duration: 300, useNativeDriver: native }),
+        Animated.timing(play, { toValue: 1, duration: 300, delay: 150, useNativeDriver: native }),
+      ]);
+    }
+    // neon ignite: 0,1,0,1,0.3,1 at 0/80/140/260/320/420ms, starting at 900ms
+    const step = (v: number, d: number) => Animated.timing(logo, { toValue: v, duration: d, easing: Easing.step0, useNativeDriver: native });
+    return Animated.parallel([
+      Animated.sequence([Animated.delay(900), step(1, 1), step(0, 80), step(1, 60), step(0, 120), step(0.3, 60), step(1, 100)]),
+      Animated.timing(play, { toValue: 1, duration: 320, delay: 1700, easing: Easing.out(Easing.back(1.6)), useNativeDriver: native }),
+    ]);
+  }, [still, logo, play]);
+
+  useEffect(() => {
+    intro.start();
+    let loop: Animated.CompositeAnimation | null = null;
+    if (!still) {
+      loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(breathe, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: native }),
+          Animated.timing(breathe, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: native }),
+        ])
+      );
+      loop.start();
+    }
+    return () => {
+      intro.stop();
+      loop?.stop();
+    };
+  }, [intro, breathe, still]);
+
+  useEffect(() => {
+    if (detonating) Animated.timing(out, { toValue: 1, duration: 260, useNativeDriver: native }).start();
+  }, [detonating, out]);
+
+  const skip = () => {
+    intro.stop();
+    logo.setValue(1);
+    play.setValue(1);
+  };
+
+  const fs = tl.fontSize;
+  const half = tl.slotSize / 2;
+  const logoStyle = [styles.logo, { fontSize: fs, lineHeight: fs * 1.15, top: tl.logoY - fs * 0.6 }];
+  const fadeOut = out.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+  const blast = out.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] });
+  const glow = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={skip} accessible={false} />
+      <Animated.View style={[StyleSheet.absoluteFill, styles.none, { opacity: Animated.multiply(logo, fadeOut), transform: [{ scale: blast }] }]}>
+        <Text style={[logoStyle, { right: width - (tl.slotX - half) + fs * 0.04, textAlign: "right" }]}>B</Text>
+        <Text style={[logoStyle, { left: tl.slotX + half + fs * 0.04 }]}>MB</Text>
+        <Text style={[styles.sub, { fontSize: fs * 0.6, top: tl.subY - fs * 0.38, letterSpacing: fs * 0.12 }]}>SHOOTER</Text>
+        <Text style={[styles.tag, { top: tl.subY + fs * 0.42 }]}>MATCH 3 · CHAIN THE BLAST · DON'T CROSS THE LINE</Text>
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.playWrap,
+          {
+            top: tl.playY - 32,
+            opacity: Animated.multiply(play, fadeOut),
+            transform: [{ scale: still ? 1 : play }],
+            pointerEvents: detonating ? "none" : "box-none",
+          },
+        ]}
+      >
+        <Animated.View style={[styles.playGlow, { opacity: still ? 0.8 : glow }]} />
+        <Button label="Play" size="hero" onPress={onPlay} accessibilityHint="Starts a new game" />
+        {best > 0 && (
+          <Text style={styles.best}>
+            BEST  <Text style={styles.bestValue}>{formatScore(best)}</Text>
           </Text>
-        ))}
+        )}
+      </Animated.View>
+
+      <View style={[styles.topRight, { top: topInset + 8 }]}>
+        <IconButton label="Settings" onPress={onSettings}>
+          <GearGlyph />
+        </IconButton>
       </View>
-    </BoardOverlay>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  title: {
-    color: colors.text,
-    fontSize: fontSizes.title,
-    fontWeight: "900",
-    textAlign: "center",
-    letterSpacing: 3,
-    lineHeight: fontSizes.title * 1.05,
+  none: { pointerEvents: "none" },
+  logo: {
+    position: "absolute",
+    fontFamily: fonts.display,
+    color: palette.textPrimary,
+    letterSpacing: 2,
+    textShadowColor: palette.magenta,
+    textShadowRadius: 14,
+    textShadowOffset: { width: 0, height: 0 },
   },
-  subtitle: { color: colors.textMuted, fontSize: fontSizes.sm, textAlign: "center" },
-  best: { color: colors.accent, fontSize: fontSizes.md, fontWeight: "700" },
-  controls: { marginTop: spacing.md, alignItems: "center", gap: spacing.xs },
-  control: { color: colors.textMuted, fontSize: fontSizes.xs },
+  sub: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontFamily: fonts.display,
+    color: palette.cyan,
+    textShadowColor: palette.cyan,
+    textShadowRadius: 12,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  tag: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    textAlign: "center",
+    fontFamily: fonts.label,
+    fontSize: 13,
+    letterSpacing: 2,
+    color: palette.textSecondary,
+  },
+  playWrap: { position: "absolute", left: 16, right: 16, alignItems: "center", gap: 14 },
+  playGlow: {
+    position: "absolute",
+    top: -6,
+    width: 292,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 2,
+    borderColor: palette.cyan,
+    shadowColor: palette.magenta,
+    shadowOpacity: 0.9,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  best: { fontFamily: fonts.label, fontSize: 16, letterSpacing: 2, color: palette.textSecondary },
+  bestValue: { fontFamily: fonts.score, fontSize: 22, color: palette.gold },
+  topRight: { position: "absolute", right: 16 },
+  gear: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },
+  gearTooth: { position: "absolute", width: 4, height: 22, borderRadius: 1, backgroundColor: palette.textPrimary },
+  gearRing: {
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    borderWidth: 3.5,
+    borderColor: palette.textPrimary,
+    backgroundColor: palette.panelSolid,
+  },
 });

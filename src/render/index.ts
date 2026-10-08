@@ -1,9 +1,9 @@
 // Single switch point for the board renderer.
 import { BoardRenderer } from "./BoardRenderer";
-import { basicRenderer } from "./basic";
 import { screenToBoardOrtho } from "./layout";
+import { threeRenderer } from "./three";
 
-export const activeRenderer: BoardRenderer = basicRenderer;
+export const activeRenderer: BoardRenderer = threeRenderer;
 
 export const screenToBoard = activeRenderer.screenToBoard ?? screenToBoardOrtho;
 

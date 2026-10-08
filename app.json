@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0d1020",
+    "backgroundColor": "#0B0420",
     "ios": {
       "supportsTablet": true
     },
@@ -14,7 +14,9 @@
       "output": "single"
     },
     "plugins": [
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-asset",
+      "expo-font"
     ]
   }
 }

@@ -1,35 +1,109 @@
-import { Pressable, StyleSheet, Text } from "react-native";
-import { colors, fontSizes, radii, spacing } from "./theme";
+// Neon buttons. primary = cyan->magenta gradient with dark ink label (6.4:1),
+// secondary = panel fill with a cyan stroke. Pressed: scale 0.96 + dim;
+// hover (web): brighter glow; keyboard focus: 2pt cyan ring.
+
+import { LinearGradient } from "expo-linear-gradient";
+import { ReactNode, useState } from "react";
+import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { fonts, gradients, palette } from "./theme";
 
 interface ButtonProps {
   label: string;
   onPress: () => void;
-  variant?: "primary" | "ghost";
+  variant?: "primary" | "secondary";
+  size?: "hero" | "lg" | "md";
+  style?: StyleProp<ViewStyle>;
+  accessibilityHint?: string;
+  children?: ReactNode;
 }
 
-export function Button({ label, onPress, variant = "primary" }: ButtonProps) {
+const SIZES = {
+  hero: { width: 280, height: 64, font: 28 },
+  lg: { width: 260, height: 56, font: 22 },
+  md: { width: 260, height: 48, font: 20 },
+} as const;
+
+export function Button({ label, onPress, variant = "primary", size = "lg", style, accessibilityHint }: ButtonProps) {
+  const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const dims = SIZES[size];
   const primary = variant === "primary";
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
       onPress={onPress}
-      style={({ pressed }) => [styles.base, primary ? styles.primary : styles.ghost, pressed && styles.pressed]}
+      onHoverIn={() => setHover(true)}
+      onHoverOut={() => setHover(false)}
+      onFocus={() => setFocus(true)}
+      onBlur={() => setFocus(false)}
+      style={({ pressed }) => [
+        styles.base,
+        { width: dims.width, maxWidth: "100%", height: dims.height, borderRadius: dims.height / 2 },
+        primary ? styles.primaryGlow : styles.secondary,
+        hover && (primary ? styles.primaryHover : styles.secondaryHover),
+        focus && styles.focus,
+        pressed && styles.pressed,
+        style,
+      ]}
     >
-      <Text style={[styles.label, { color: primary ? colors.accentText : colors.text }]}>{label}</Text>
+      {primary && (
+        <LinearGradient
+          colors={gradients.primary}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: dims.height / 2 }]}
+        />
+      )}
+      {hover && <View style={[StyleSheet.absoluteFill, styles.hoverWash, { borderRadius: dims.height / 2 }]} />}
+      <Text style={[styles.label, { fontSize: dims.font, color: primary ? palette.ink : palette.textPrimary }]}>
+        {label.toUpperCase()}
+      </Text>
+    </Pressable>
+  );
+}
+
+// Round 44pt icon button (pause, settings).
+export function IconButton({ label, onPress, children }: { label: string; onPress: () => void; children: ReactNode }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={10}
+      onPress={onPress}
+      style={({ pressed }) => [styles.icon, pressed && styles.pressed]}
+    >
+      {children}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  base: {
-    minWidth: 160,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radii.pill,
-    alignItems: "center",
+  base: { alignItems: "center", justifyContent: "center", overflow: "visible", cursor: "pointer" },
+  primaryGlow: {
+    shadowColor: palette.magenta,
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
   },
-  primary: { backgroundColor: colors.accent },
-  ghost: { borderWidth: 1, borderColor: colors.boardEdge },
-  pressed: { opacity: 0.75, transform: [{ scale: 0.97 }] },
-  label: { fontSize: fontSizes.md, fontWeight: "800", letterSpacing: 1 },
+  primaryHover: { shadowRadius: 12, shadowOpacity: 0.9 },
+  secondary: { backgroundColor: palette.panelSolid, borderWidth: 2, borderColor: palette.cyan },
+  secondaryHover: { shadowColor: palette.cyan, shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } },
+  hoverWash: { backgroundColor: "rgba(255,255,255,0.12)" },
+  focus: { outlineColor: palette.cyan, outlineWidth: 2, outlineStyle: "solid", outlineOffset: 3 },
+  pressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
+  label: { fontFamily: fonts.button, letterSpacing: 1.5 },
+  icon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: palette.panel,
+    borderWidth: 1.5,
+    borderColor: palette.panelBorder,
+    cursor: "pointer",
+  },
 });

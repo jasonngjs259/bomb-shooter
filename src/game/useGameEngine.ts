@@ -2,6 +2,7 @@
 // and drives it with requestAnimationFrame (available on native and web).
 
 import { useEffect, useRef, useState } from "react";
+import { getSimClock } from "./clock";
 import { MAX_DT } from "./constants";
 import { GameEngine, GameEngineOptions } from "./engine";
 
@@ -22,6 +23,7 @@ export function useGameEngine(options?: GameEngineOptions): GameEngineHandle {
     let handle = 0;
     let last: number | null = null;
     let alive = true;
+    const clock = getSimClock(engine); // hit-stop / slow-mo / pause
 
     const tick = (now: number) => {
       if (!alive) return;
@@ -29,7 +31,7 @@ export function useGameEngine(options?: GameEngineOptions): GameEngineHandle {
       // or a slow frame can't teleport the bomb through tiles.
       const dt = last === null ? 0 : Math.min(Math.max((now - last) / 1000, 0), MAX_DT);
       last = now;
-      engine.update(dt);
+      engine.update(dt * clock.scale());
       setFrame(engine.getRevision()); // same value -> React bails out
       handle = requestAnimationFrame(tick);
     };

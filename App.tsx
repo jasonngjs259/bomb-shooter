@@ -1,21 +1,50 @@
+import { Orbitron_700Bold } from "@expo-google-fonts/orbitron/700Bold";
+import { Orbitron_800ExtraBold } from "@expo-google-fonts/orbitron/800ExtraBold";
+import { Orbitron_900Black } from "@expo-google-fonts/orbitron/900Black";
+import { Rajdhani_500Medium } from "@expo-google-fonts/rajdhani/500Medium";
+import { Rajdhani_600SemiBold } from "@expo-google-fonts/rajdhani/600SemiBold";
+import { Rajdhani_700Bold } from "@expo-google-fonts/rajdhani/700Bold";
+import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GameScreen } from "./src/ui/GameScreen";
-import { colors } from "./src/ui/theme";
+import { initSettings } from "./src/ui/settings";
+import { palette } from "./src/ui/theme";
+
+initSettings();
 
 export default function App() {
+  // Orbitron + Rajdhani load before the title so the logo never flashes a
+  // fallback font; a simple neon spinner covers the wait.
+  const [fontsLoaded, fontError] = useFonts({
+    Orbitron_700Bold,
+    Orbitron_800ExtraBold,
+    Orbitron_900Black,
+    Rajdhani_500Medium,
+    Rajdhani_600SemiBold,
+    Rajdhani_700Bold,
+  });
+  const ready = fontsLoaded || fontError !== null;
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar style="light" />
-        <GameScreen />
+        {ready ? (
+          <GameScreen />
+        ) : (
+          <View style={styles.loader}>
+            <ActivityIndicator size="large" color={palette.cyan} />
+          </View>
+        )}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
+  root: { flex: 1, backgroundColor: palette.bgTop },
+  loader: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: palette.bgTop },
 });
