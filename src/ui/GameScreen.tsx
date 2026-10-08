@@ -1,8 +1,12 @@
-// The single game screen. A full-bleed renderer (the 3D scene fills the
-// window) under RN overlays: HUD, title, pause/settings, end card, first-run
-// hint and screen flashes. Screens follow the engine phase plus a UI-only
-// "menu" flag (back to title from the end card / pause).
+// The Classic game screen + title. A full-bleed renderer (the 3D scene
+// fills the window) under RN overlays: HUD, title (mode select), pause /
+// settings, end card, first-run hint and screen flashes. Screens follow the
+// engine phase plus a UI-only "menu" flag (back to title from the end card /
+// pause). Choosing ARENA 360 detonates the logo bomb, then hands over to
+// the App (onArena). Keyboard restart from the end card waits for the
+// card's buttons to arm (same 1.5 s rule as clicking).
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutChangeEvent, Platform, StyleSheet, useWindowDimensions, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
@@ -13,9 +17,14 @@ import { getSimClock } from "../game/clock";
 import { useGameEngine } from "../game/useGameEngine";
 import { useAimInput } from "../input/useAimInput";
 import { activeRenderer, screenToBoard } from "../render";
+import { ARENA_BEST_KEY, loadBestScore } from "../storage/bestScore";
+import { ARENA_PLAYED_KEY } from "./arena/useArenaSession";
+import { ARM_MS } from "./arena/ArenaEndCard";
 import { computeGameLayout } from "./gameLayout";
 import { GameOverOverlay } from "./GameOverOverlay";
 import { HudBar, HudSide } from "./Hud";
+import { GameMode } from "./ModeButtons";
+import { lockPortrait } from "./orientation";
 import { PauseMenu } from "./PauseMenu";
 import { RendererNotice } from "./RendererNotice";
 import { ScreenFlash } from "./ScreenFlash";
@@ -27,7 +36,9 @@ import { useBestScore } from "./useBestScore";
 
 const PLAYING = new Set(["ready", "shooting", "resolving"]);
 
-export function GameScreen() {
+const LAST_MODE_KEY = "bs.lastMode";
+
+export function GameScreen({ onArena }: { onArena: () => void }) {
   const { engine, frame } = useGameEngine();
   const insets = useSafeAreaInsets();
   const win = useWindowDimensions();
@@ -40,11 +51,37 @@ export function GameScreen() {
   const [paused, setPaused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [endVisible, setEndVisible] = useState(false);
+  const [endArmed, setEndArmed] = useState(false);
+  const endArmedRef = useRef(false);
+  endArmedRef.current = endArmed;
+  const [selected, setSelected] = useState<GameMode>("arena");
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const [arenaNew, setArenaNew] = useState(false);
+  const [bestArena, setBestArena] = useState(0);
+  const pendingMode = useRef<GameMode>("classic");
   const biggestCombo = useRef(0);
   const menuRef = useRef(menu);
   menuRef.current = menu;
 
   useEffect(() => attachHaptics(engine), [engine]);
+
+  // Title + Classic are portrait on phones; mode memory for the title
+  useEffect(() => {
+    void lockPortrait();
+    let alive = true;
+    AsyncStorage.multiGet([LAST_MODE_KEY, ARENA_PLAYED_KEY])
+      .then(([[, last], [, played]]) => {
+        if (!alive) return;
+        if (last === "arena" || last === "classic") setSelected(last);
+        setArenaNew(played === null);
+      })
+      .catch(() => undefined);
+    loadBestScore(ARENA_BEST_KEY).then((v) => alive && setBestArena(v));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const phase = engine.getPhase();
   const playing = PLAYING.has(phase);
@@ -70,6 +107,11 @@ export function GameScreen() {
   finishTitle.current = () => {
     if (!detonatingRef.current) return;
     detonatingRef.current = false;
+    AsyncStorage.setItem(LAST_MODE_KEY, pendingMode.current).catch(() => undefined);
+    if (pendingMode.current === "arena") {
+      onArena();
+      return;
+    }
     engine.newGame();
     setMenu(false);
     setDetonating(false);
@@ -81,17 +123,36 @@ export function GameScreen() {
     return () => clearTimeout(id);
   }, [detonating]);
 
-  const startGame = useCallback(() => {
+  const startGame = useCallback((mode?: GameMode) => {
     if (engine.getPhase() === "title" || menuRef.current) {
       if (detonatingRef.current) return;
+      pendingMode.current = mode ?? selectedRef.current;
+      setSelected(pendingMode.current);
       detonatingRef.current = true;
       setDetonating(true);
       getFxBus(engine).emit("titleDetonate", {});
     } else {
+      const p = engine.getPhase();
+      // end card: keyboard / tap restart only once its buttons are armed
+      if ((p === "gameOver" || p === "won") && !endArmedRef.current) return;
       engine.newGame();
     }
   }, [engine]);
-  const { gesture, showAimGuide } = useAimInput({ engine, layout, screenToBoard, onStart: startGame });
+  const onStartKey = useCallback(() => startGame(), [startGame]);
+  const { gesture, showAimGuide } = useAimInput({ engine, layout, screenToBoard, onStart: onStartKey });
+
+  // Title keys: Left/Right choose a mode, 1 / 2 play Arena / Classic
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (engine.getPhase() !== "title" && !menuRef.current) return;
+      if (e.code === "ArrowLeft" || e.code === "ArrowRight") setSelected((m) => (m === "arena" ? "classic" : "arena"));
+      else if (e.code === "Digit1" || e.code === "Numpad1") startGame("arena");
+      else if (e.code === "Digit2" || e.code === "Numpad2") startGame("classic");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [engine, startGame]);
 
   // Pause freezes the sim clock (engine + FX); auto-resume outside play.
   useEffect(() => {
@@ -115,10 +176,16 @@ export function GameScreen() {
   // End card waits for the game-over / win FX sequence
   useEffect(() => {
     if (phase === "gameOver" || phase === "won") {
-      const id = setTimeout(() => setEndVisible(true), still ? 400 : phase === "won" ? 1300 : 1500);
-      return () => clearTimeout(id);
+      const delay = still ? 400 : phase === "won" ? 1300 : 1500;
+      const id = setTimeout(() => setEndVisible(true), delay);
+      const arm = setTimeout(() => setEndArmed(true), delay + ARM_MS);
+      return () => {
+        clearTimeout(id);
+        clearTimeout(arm);
+      };
     }
     setEndVisible(false);
+    setEndArmed(false);
     return undefined;
   }, [phase, still]);
 
@@ -197,6 +264,10 @@ export function GameScreen() {
           width={W}
           height={H}
           best={best}
+          bestArena={bestArena}
+          arenaNew={arenaNew}
+          selected={selected}
+          onSelect={setSelected}
           still={still}
           detonating={detonating}
           topInset={insets.top}
@@ -212,6 +283,7 @@ export function GameScreen() {
           isNewBest={isNewBest}
           biggestCombo={biggestCombo.current}
           still={still}
+          armed={endArmed}
           onRetry={restart}
           onMenu={toMenu}
         />

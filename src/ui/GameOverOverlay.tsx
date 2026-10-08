@@ -18,6 +18,7 @@ interface Props {
   isNewBest: boolean;
   biggestCombo: number;
   still: boolean;
+  armed: boolean; // buttons accept input (1.5 s after the card shows)
   onRetry: () => void;
   onMenu: () => void;
 }
@@ -38,7 +39,7 @@ function useCountUp(target: number, duration: number) {
   return value;
 }
 
-export function GameOverOverlay({ won, score, best, isNewBest, biggestCombo, still, onRetry, onMenu }: Props) {
+export function GameOverOverlay({ won, score, best, isNewBest, biggestCombo, still, armed, onRetry, onMenu }: Props) {
   const fade = useRef(new Animated.Value(0)).current;
   const card = useRef(new Animated.Value(0)).current;
   const glitch = useRef(new Animated.Value(0)).current;
@@ -125,9 +126,11 @@ export function GameOverOverlay({ won, score, best, isNewBest, biggestCombo, sti
             <Text style={styles.badgeText}>NEW BEST</Text>
           </Animated.View>
         )}
-        <Button label="Play again" size="lg" onPress={onRetry} />
-        <Button label="Menu" size="md" variant="secondary" onPress={onMenu} />
-        {Platform.OS === "web" && <Text style={styles.hint}>SPACE · PLAY AGAIN</Text>}
+        <View style={[styles.buttons, !armed && styles.disarmed]} pointerEvents={armed ? "auto" : "none"}>
+          <Button label="Play again" size="lg" onPress={onRetry} />
+          <Button label="Menu" size="md" variant="secondary" onPress={onMenu} />
+          {Platform.OS === "web" && <Text style={styles.hint}>SPACE · PLAY AGAIN</Text>}
+        </View>
       </Animated.View>
     </Animated.View>
   );
@@ -160,5 +163,7 @@ const styles = StyleSheet.create({
   rowValue: { fontFamily: fonts.score, fontSize: 20, color: palette.textPrimary, fontVariant: ["tabular-nums"] },
   badge: { paddingHorizontal: 14, paddingVertical: 4, borderRadius: 999, backgroundColor: palette.gold },
   badgeText: { fontFamily: fonts.button, fontSize: 16, letterSpacing: 2, color: palette.ink },
+  buttons: { alignItems: "center", gap: spacing.md, alignSelf: "stretch" },
+  disarmed: { opacity: 0.45 },
   hint: { fontFamily: fonts.label, fontSize: 12, letterSpacing: 1.5, color: palette.textMuted },
 });

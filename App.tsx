@@ -6,9 +6,11 @@ import { Rajdhani_600SemiBold } from "@expo-google-fonts/rajdhani/600SemiBold";
 import { Rajdhani_700Bold } from "@expo-google-fonts/rajdhani/700Bold";
 import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
+import { useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { ArenaScreen } from "./src/ui/arena/ArenaScreen";
 import { GameScreen } from "./src/ui/GameScreen";
 import { initSettings } from "./src/ui/settings";
 import { palette } from "./src/ui/theme";
@@ -27,14 +29,17 @@ export default function App() {
     Rajdhani_700Bold,
   });
   const ready = fontsLoaded || fontError !== null;
+  // Classic (with the title) or Arena 360; each owns its own GL canvas, so
+  // only one WebGL context is alive at a time.
+  const [mode, setMode] = useState<"classic" | "arena">("classic");
 
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar style="light" />
-        {ready ? (
-          <GameScreen />
-        ) : (
+        {ready && mode === "classic" && <GameScreen onArena={() => setMode("arena")} />}
+        {ready && mode === "arena" && <ArenaScreen onExit={() => setMode("classic")} onClassic={() => setMode("classic")} />}
+        {!ready && (
           <View style={styles.loader}>
             <ActivityIndicator size="large" color={palette.cyan} />
           </View>

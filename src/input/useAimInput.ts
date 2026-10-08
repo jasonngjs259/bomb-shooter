@@ -3,7 +3,10 @@
 // Built on react-native-gesture-handler (bundled in Expo Go), which gives
 // view-relative coordinates on iOS, Android and web alike:
 //   Pan (minDistance 0)  touch/mouse down aims, drag re-aims, release fires.
-//                        Pressing on the next-bomb preview swaps instead.
+//                        Pressing on the next-bomb preview (or its NEXT
+//                        label) swaps instead; its hit area is at least
+//                        30pt in radius on screen (>= 44pt target) however
+//                        small the board is drawn.
 //   Hover                mouse hover aims on desktop (and iPad pointer).
 // Screen points are converted with the active renderer's screenToBoard, so a
 // perspective renderer only needs to supply its own mapping.
@@ -33,6 +36,20 @@ export function useAimInput({ engine, layout, screenToBoard, onStart }: Options)
 
   const gesture = useMemo(() => {
     const toBoard = (x: number, y: number) => latest.current.screenToBoard(latest.current.layout, x, y);
+    // Screen-space NEXT hit test: the preview circle (min 30pt radius) plus
+    // the NEXT label drawn under it.
+    const onNext = (x: number, y: number) => {
+      const p = toBoard(x, y);
+      if (engine.isPointOnNextBomb(p.x, p.y)) return true;
+      const { layout: l } = latest.current;
+      const n = engine.getNextBomb();
+      const r = engine.getBoardMetrics().radius;
+      const cx = n.x * l.scale + l.offsetX;
+      const cy = n.y * l.scale + l.offsetY;
+      if (Math.hypot(x - cx, y - cy) <= Math.max(30, r * 1.5 * l.scale)) return true;
+      const labelTop = (n.y + r + 4) * l.scale + l.offsetY;
+      return Math.abs(x - cx) <= 40 && y >= labelTop && y <= labelTop + 22;
+    };
     let swapIntent = false;
 
     const pan = Gesture.Pan()
@@ -41,7 +58,8 @@ export function useAimInput({ engine, layout, screenToBoard, onStart }: Options)
       .runOnJS(true) // keep callbacks on JS even if Reanimated gets installed later
       .onBegin((e) => {
         const p = toBoard(e.x, e.y);
-        swapIntent = engine.getPhase() === "ready" && engine.isPointOnNextBomb(p.x, p.y);
+        const phase = engine.getPhase();
+        swapIntent = (phase === "ready" || phase === "shooting" || phase === "resolving") && onNext(e.x, e.y);
         if (swapIntent) return;
         engine.aimAt(p.x, p.y);
         setPointerDown(true);
@@ -54,8 +72,7 @@ export function useAimInput({ engine, layout, screenToBoard, onStart }: Options)
       })
       .onEnd((e, success) => {
         if (swapIntent) {
-          const p = toBoard(e.x, e.y);
-          if (engine.isPointOnNextBomb(p.x, p.y)) engine.swapBomb();
+          if (onNext(e.x, e.y)) engine.swapBomb();
         } else if (success) {
           engine.fire();
         }
@@ -71,7 +88,7 @@ export function useAimInput({ engine, layout, screenToBoard, onStart }: Options)
       .onUpdate((e) => {
         const p = toBoard(e.x, e.y);
         // Don't swing the aim while the cursor rests on the swap button
-        if (!engine.isPointOnNextBomb(p.x, p.y)) engine.aimAt(p.x, p.y);
+        if (!onNext(e.x, e.y)) engine.aimAt(p.x, p.y);
         setKeyboardAim(false);
       })
       .onFinalize(() => setHovering(false));

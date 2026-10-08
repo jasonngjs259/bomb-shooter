@@ -13,6 +13,8 @@ export interface FxBusEvents {
   // UI asks the renderer to detonate the title bomb; renderer answers titleDetonated.
   titleDetonate: Record<string, never>;
   titleDetonated: Record<string, never>;
+  // Arena 360: big centred banner text ("SURGE!", "ARENA CLEAR!").
+  banner: { text: string; color: string; duration: number };
 }
 
 const buses = new WeakMap<object, TypedEmitter<FxBusEvents>>();

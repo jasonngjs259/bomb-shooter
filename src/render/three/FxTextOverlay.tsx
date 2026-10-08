@@ -7,7 +7,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Platform, StyleSheet } from "react-native";
 import { FxBusEvents, getFxBus } from "../../fx/bus";
-import { GameEngineView } from "../../game/types";
 import { BoardLayout } from "../layout";
 import { fonts, palette } from "../../ui/theme";
 import { ownLayer, textGlow } from "../../ui/webSafe";
@@ -69,7 +68,8 @@ function FloatLabel({ item, layout, onDone }: { item: FloatText; layout: BoardLa
   );
 }
 
-export const FxTextOverlay = memo(function FxTextOverlay({ engine, layout }: { engine: GameEngineView; layout: BoardLayout }) {
+// `engine` is only the FX bus owner (Classic or Arena engine).
+export const FxTextOverlay = memo(function FxTextOverlay({ engine, layout }: { engine: object; layout: BoardLayout }) {
   const [items, setItems] = useState<FloatText[]>([]);
   const nextId = useRef(1);
   useEffect(

@@ -1,15 +1,17 @@
 // Title screen overlay (the first impression). The 3D scene behind it draws
 // the lit-fuse bomb that stands in for the logo's "O" and the bomb pile; this
-// view draws the neon logo text (sign-tube ignite flicker), the PLAY button
-// (scales in, then breathes) and BEST. Tap anywhere to skip the intro.
+// view draws the neon logo text (sign-tube ignite flicker), the mode buttons
+// (ARENA 360 / CLASSIC, scale in after the ignite) and BEST. Tap anywhere
+// to skip the intro: that layer is a plain responder view, not a focusable
+// button, so keyboard focus never lands on it and Enter keeps working.
 
 import { useEffect, useMemo, useRef } from "react";
-import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { Button, IconButton } from "./Button";
-import { formatScore } from "./Hud";
+import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
+import { IconButton } from "./Button";
+import { GameMode, ModeButtons } from "./ModeButtons";
 import { fonts, palette } from "./theme";
 import { titleLayout } from "./titleLayout";
-import { boxGlow, textGlow } from "./webSafe";
+import { textGlow } from "./webSafe";
 
 const native = Platform.OS !== "web";
 const TAGLINE = "MATCH 3 · CHAIN THE BLAST · DON'T CROSS THE LINE";
@@ -20,11 +22,15 @@ const TAGLINE_2 = "MATCH 3 · CHAIN THE BLAST\nDON'T CROSS THE LINE";
 interface Props {
   width: number;
   height: number;
-  best: number;
+  best: number; // Classic
+  bestArena: number;
+  arenaNew: boolean;
+  selected: GameMode;
+  onSelect: (mode: GameMode) => void;
   still: boolean; // reduced motion
   detonating: boolean;
   topInset: number;
-  onPlay: () => void;
+  onPlay: (mode: GameMode) => void;
   onSettings: () => void;
 }
 
@@ -39,11 +45,12 @@ function GearGlyph() {
   );
 }
 
-export function TitleScreen({ width, height, best, still, detonating, topInset, onPlay, onSettings }: Props) {
+export function TitleScreen({
+  width, height, best, bestArena, arenaNew, selected, onSelect, still, detonating, topInset, onPlay, onSettings,
+}: Props) {
   const tl = titleLayout(width, height);
   const logo = useRef(new Animated.Value(0)).current;
   const play = useRef(new Animated.Value(0)).current;
-  const breathe = useRef(new Animated.Value(0)).current;
   const out = useRef(new Animated.Value(0)).current;
 
   const intro = useMemo(() => {
@@ -63,21 +70,8 @@ export function TitleScreen({ width, height, best, still, detonating, topInset, 
 
   useEffect(() => {
     intro.start();
-    let loop: Animated.CompositeAnimation | null = null;
-    if (!still) {
-      loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(breathe, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: native }),
-          Animated.timing(breathe, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.sin), useNativeDriver: native }),
-        ])
-      );
-      loop.start();
-    }
-    return () => {
-      intro.stop();
-      loop?.stop();
-    };
-  }, [intro, breathe, still]);
+    return () => intro.stop();
+  }, [intro]);
 
   useEffect(() => {
     if (detonating) Animated.timing(out, { toValue: 1, duration: 260, useNativeDriver: native }).start();
@@ -94,11 +88,10 @@ export function TitleScreen({ width, height, best, still, detonating, topInset, 
   const logoStyle = [styles.logo, { fontSize: fs, lineHeight: fs * 1.15, top: tl.logoY - fs * 0.6 }];
   const fadeOut = out.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
   const blast = out.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] });
-  const glow = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={skip} accessible={false} />
+      <View style={StyleSheet.absoluteFill} onStartShouldSetResponder={() => true} onResponderRelease={skip} />
       <Animated.View style={[StyleSheet.absoluteFill, styles.none, { opacity: Animated.multiply(logo, fadeOut), transform: [{ scale: blast }] }]}>
         <Text style={[logoStyle, { right: width - (tl.slotX - half) + fs * 0.04, textAlign: "right" }]}>B</Text>
         <Text style={[logoStyle, { left: tl.slotX + half + fs * 0.04 }]}>MB</Text>
@@ -112,20 +105,17 @@ export function TitleScreen({ width, height, best, still, detonating, topInset, 
         style={[
           styles.playWrap,
           {
-            top: tl.playY - 32,
+            top: tl.playY - (tl.desktop ? 66 : 68),
             opacity: Animated.multiply(play, fadeOut),
             transform: [{ scale: still ? 1 : play }],
             pointerEvents: detonating ? "none" : "box-none",
           },
         ]}
       >
-        <Animated.View style={[styles.playGlow, { opacity: still ? 0.8 : glow }]} />
-        <Button label="Play" size="hero" onPress={onPlay} accessibilityHint="Starts a new game" />
-        {best > 0 && (
-          <Text style={styles.best}>
-            BEST  <Text style={styles.bestValue}>{formatScore(best)}</Text>
-          </Text>
-        )}
+        <ModeButtons
+          desktop={tl.desktop} selected={selected} arenaNew={arenaNew} bestArena={bestArena} bestClassic={best} still={still}
+          onPlay={onPlay} onSelect={onSelect}
+        />
       </Animated.View>
 
       <View style={[styles.topRight, { top: topInset + 8 }]}>
@@ -171,18 +161,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   playWrap: { position: "absolute", left: 16, right: 16, alignItems: "center", gap: 14 },
-  playGlow: {
-    position: "absolute",
-    top: -6,
-    width: 292,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 2,
-    borderColor: palette.cyan,
-    ...boxGlow(palette.magenta, 18, 0.9),
-  },
-  best: { fontFamily: fonts.label, fontSize: 16, letterSpacing: 2, color: palette.textSecondary },
-  bestValue: { fontFamily: fonts.score, fontSize: 22, color: palette.gold },
   topRight: { position: "absolute", right: 16 },
   gear: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },
   gearTooth: { position: "absolute", width: 4, height: 22, borderRadius: 1, backgroundColor: palette.textPrimary },

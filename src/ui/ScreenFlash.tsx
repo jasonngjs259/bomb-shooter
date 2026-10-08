@@ -4,9 +4,8 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Platform, StyleSheet } from "react-native";
 import { getFxBus } from "../fx/bus";
-import { GameEngineView } from "../game/types";
 
-export const ScreenFlash = memo(function ScreenFlash({ engine }: { engine: GameEngineView }) {
+export const ScreenFlash = memo(function ScreenFlash({ engine }: { engine: object }) {
   const v = useRef(new Animated.Value(0)).current;
   const [tint, setTint] = useState("#FFFFFF");
   useEffect(

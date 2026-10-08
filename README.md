@@ -27,6 +27,7 @@ npx expo start
 Other scripts: `npm run ios`, `npm run android`, `npm run typecheck`.
 Engine sanity check (headless): `npx tsx scripts/engine-sanity.ts`.
 Renderer fallback + layout check (headless): `npx tsx scripts/renderer-fallback.ts`.
+Arena checks (headless): `npx tsx scripts/arena-sanity.ts`, `npx tsx scripts/arena-controls.ts`.
 
 ## Controls
 
@@ -76,6 +77,44 @@ canvas remounts when the browser restores it; no restore within 4 s, a second
 loss in the same browser session, or any renderer error (error boundary, also
 on native) switches to 2D. State machine: `src/render/status/`.
 
+## Arena 360 (new mode)
+
+Pick **ARENA 360** on the title (Classic is still there). You are a neon
+stick figure with a bomb launcher standing in a round arena; a ring of bombs
+surrounds it on all sides (360°) and slowly creeps inwards.
+
+**Rules**
+- Shoot a bomb into the field: if it touches **3 or more of the same colour**
+  (including itself), they pop; small groups cut loose by a pop shatter for a
+  bonus, and every pop knocks nearby bombs back outwards.
+- Walk around inside the arena to get closer or find a better angle.
+- **You lose** when a creeping bomb crosses the arena's border line.
+  (A non-matching shot that would stick on/inside the line just deflects.)
+- **You win** when every bomb is cleared; then go on to the next level
+  (more bombs, faster creep; the creep also surges every 20 s).
+- Help: the ground danger ring and the radar show where bombs are close,
+  red arrows point at off-screen threats, and the aim laser highlights the
+  bombs that would pop.
+
+**Controls**
+
+| Action | Desktop (web) | Phone (landscape) |
+| --- | --- | --- |
+| Turn / aim | Mouse (click to lock the pointer), Q/E or ← → | Drag on the right side of the screen |
+| Move | W A S D (relative to the camera) | Left thumb joystick (appears where you touch) |
+| Fire | Left click or Space | FIRE button (fires on touch) |
+| Swap current / next | X, Shift or right click | NEXT button |
+| Face the biggest threat | R | Tap a red threat arrow (TURN 180 button turns around) |
+| Pause | Esc or P | Pause button (top right) |
+
+Phones switch to landscape for Arena (portrait for the title and Classic);
+mobile web can't lock orientation, so it uses a portrait layout and asks you
+to rotate. The first game shows a 3-step tutorial (move, turn, fire). Pause
+has Arena settings: mouse speed (desktop) and aim assist (touch). Arena needs
+3D: if WebGL is lost or unavailable the game pauses with **Retry 3D** /
+**Play Classic**. Headless checks: `npx tsx scripts/arena-sanity.ts` (rules)
+and `npx tsx scripts/arena-controls.ts` (controls + camera maths).
+
 ## Project structure
 
 ```
@@ -87,6 +126,10 @@ src/render/                 Renderer contract, layout fitting, basic RN renderer
 src/render/three/           three.js / react-three-fiber 3D renderer
 src/render/adaptive/        Active renderer: 3D with automatic 2D fallback
 src/render/status/          WebGL probe + context-loss / fallback state
+src/game/arena/             Arena 360 engine (framework-free)
+src/arena/                  Arena controls (maths, desktop, touch)
+src/render/arena/           Arena 360 three.js world (stickman, camera, FX)
+src/ui/arena/               Arena 360 screen, HUD, tutorial, end card
 src/ui/                     HUD, title, pause, game-over card, hints, theme
 src/fx/bus.ts               Renderer <-> UI presentation events
 src/game/clock.ts           Hit-stop / slow motion / pause clock

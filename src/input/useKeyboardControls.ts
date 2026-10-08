@@ -10,6 +10,10 @@ import { GameEngine } from "../game/engine";
 
 const TURN_SPEED = 110; // degrees per second while a key is held
 
+// A focused button / switch handles its own Space / Enter.
+const onControl = (t: EventTarget | null) =>
+  typeof HTMLElement !== "undefined" && t instanceof HTMLElement && t.closest('[role="button"],button,[role="switch"]') !== null;
+
 interface Options {
   engine: GameEngine;
   onStart: () => void; // start / restart when not playing
@@ -66,13 +70,15 @@ export function useKeyboardControls({ engine, onStart, onAimKey }: Options) {
           setHeld("right", true);
           break;
         case "Space":
+          if (onControl(e.target)) return;
           if (!e.repeat) {
             if (isPlaying()) engine.fire();
             else cbs.current.onStart();
           }
           break;
         case "Enter":
-          if (!isPlaying()) cbs.current.onStart();
+          if (onControl(e.target)) return;
+          if (!isPlaying() && !e.repeat) cbs.current.onStart();
           break;
         case "KeyX":
         case "ShiftLeft":

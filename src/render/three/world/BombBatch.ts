@@ -11,7 +11,7 @@ import {
   PlaneGeometry, Quaternion, ShaderMaterial, SphereGeometry, Texture, TubeGeometry, Vector3, Euler,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { SpriteBatch } from "../fx/SpriteBatch";
+import { QuadSink } from "../fx/SpriteBatch";
 import { bombBase, bombGlow, color, colorAt, HEX } from "../palette";
 import { GLYPH_COUNT } from "../textures";
 
@@ -115,6 +115,7 @@ export class BombBatch {
   readonly draw = newDraw();
   glyphAlpha = 0.28;
   haloAlpha = 0.9; // texture tail is ~0.12 at the sphere edge
+  haloBack = 18; // halo pushed this far along -z (behind the bomb in Classic)
   private count = 0;
   private readonly capacity: number;
   private readonly fx: Float32Array;
@@ -130,7 +131,7 @@ export class BombBatch {
   private readonly sparkColor = color(HEX.spark);
   private readonly shadowColor = new Color(0, 0, 0);
 
-  constructor(capacity: number, glyphAtlas: Texture, private glow: SpriteBatch, private shadows: SpriteBatch) {
+  constructor(capacity: number, glyphAtlas: Texture, private glow: QuadSink, private shadows: QuadSink) {
     this.capacity = capacity;
     const sphere = new SphereGeometry(BOMB_RADIUS, 32, 24);
     this.fx = new Float32Array(capacity * 2);
@@ -222,7 +223,7 @@ export class BombBatch {
 
     const k = d.scale;
     if (d.halo > 0) {
-      this.glow.add(d.x, d.y, d.z - 18 * k, 72 * k, 72 * k, colorAt(bombGlow, d.colorIndex), this.haloAlpha * d.halo);
+      this.glow.add(d.x, d.y, d.z - this.haloBack * k, 72 * k, 72 * k, colorAt(bombGlow, d.colorIndex), this.haloAlpha * d.halo);
     }
     if (d.spark > 0) {
       this.tip.copy(TIP).applyMatrix4(this.m);

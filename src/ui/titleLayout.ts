@@ -33,7 +33,7 @@ export function titleLayout(w: number, h: number): TitleLayout {
   const tagY = subY + fontSize * 0.44;
   const tagBottom = tagY + tagLines * TAG_LINE_H + TAG_PAD;
   const playY = h * (desktop ? 0.76 : 0.75);
-  const playTop = playY - 38; // PLAY glow ring top
+  const playTop = playY - (desktop ? 72 : 76); // top of the mode buttons
   // Pile: preferred size, shrunk if the gap between tagline and PLAY is short.
   const wanted = desktop ? 64 : Math.max(34, Math.min(56, w * 0.105));
   const gap = playTop - 12 - (tagBottom + 10);

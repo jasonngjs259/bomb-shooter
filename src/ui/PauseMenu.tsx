@@ -1,6 +1,7 @@
 // Pause / settings card: Resume, Restart, Menu (in game) and the Haptics,
 // Reduce motion and Colour assist toggles (persisted in settings).
 
+import { ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "./Button";
 import { reduceMotion, updateSettings, useSettings } from "./settings";
@@ -11,9 +12,10 @@ interface Props {
   onResume: () => void;
   onRestart?: () => void;
   onMenu?: () => void;
+  children?: ReactNode; // extra mode-specific settings rows
 }
 
-function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
     <Pressable
       accessibilityRole="switch"
@@ -30,7 +32,7 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
   );
 }
 
-export function PauseMenu({ title, onResume, onRestart, onMenu }: Props) {
+export function PauseMenu({ title, onResume, onRestart, onMenu, children }: Props) {
   const s = useSettings();
   return (
     <View style={[StyleSheet.absoluteFill, styles.overlay]}>
@@ -49,6 +51,7 @@ export function PauseMenu({ title, onResume, onRestart, onMenu }: Props) {
             onChange={(v) => updateSettings({ reduceMotionOverride: v })}
           />
           <Toggle label="COLOUR ASSIST" value={s.colourAssist} onChange={(v) => updateSettings({ colourAssist: v })} />
+          {children}
         </View>
       </View>
     </View>

@@ -3,7 +3,7 @@
     "name": "Bomb Shooter",
     "slug": "bomb-shooter",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0B0420",
     "ios": {
@@ -16,7 +16,8 @@
     "plugins": [
       "expo-status-bar",
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      "expo-screen-orientation"
     ]
   }
 }

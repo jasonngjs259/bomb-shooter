@@ -14,7 +14,12 @@ export interface Settings {
   reduceMotionOverride: boolean | null; // null = follow the system
   systemReduceMotion: boolean;
   quality: FxQuality; // auto-detected, see GameWorld
+  mouseSensitivity: number; // Arena mouse-look, rad per px (0.001..0.006)
+  aimAssist: boolean; // Arena touch: soft nudge onto a bomb after a turn drag
 }
+
+export const SENSITIVITY_MIN = 0.001;
+export const SENSITIVITY_MAX = 0.006;
 
 const KEY = "bs.settings";
 let state: Settings = {
@@ -23,6 +28,8 @@ let state: Settings = {
   reduceMotionOverride: null,
   systemReduceMotion: false,
   quality: "high",
+  mouseSensitivity: 0.0022,
+  aimAssist: true,
 };
 const listeners = new Set<() => void>();
 
@@ -36,8 +43,10 @@ export function updateSettings(patch: Partial<Settings>, persist = true) {
   state = { ...state, ...patch };
   emit();
   if (persist) {
-    const { haptics, colourAssist, reduceMotionOverride } = state;
-    AsyncStorage.setItem(KEY, JSON.stringify({ haptics, colourAssist, reduceMotionOverride })).catch(() => undefined);
+    const { haptics, colourAssist, reduceMotionOverride, mouseSensitivity, aimAssist } = state;
+    AsyncStorage.setItem(KEY, JSON.stringify({ haptics, colourAssist, reduceMotionOverride, mouseSensitivity, aimAssist })).catch(
+      () => undefined
+    );
   }
 }
 
@@ -66,6 +75,8 @@ export function initSettings() {
           haptics: saved.haptics ?? state.haptics,
           colourAssist: saved.colourAssist ?? state.colourAssist,
           reduceMotionOverride: saved.reduceMotionOverride ?? null,
+          mouseSensitivity: Math.min(SENSITIVITY_MAX, Math.max(SENSITIVITY_MIN, saved.mouseSensitivity ?? state.mouseSensitivity)),
+          aimAssist: saved.aimAssist ?? state.aimAssist,
         },
         false
       );

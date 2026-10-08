@@ -8,6 +8,12 @@ import {
   MeshBasicMaterial, NormalBlending, PlaneGeometry, Texture,
 } from "three";
 
+// Anything that takes coloured glow quads (camera-facing in Classic, true
+// billboards in Arena 360).
+export interface QuadSink {
+  add(x: number, y: number, z: number, w: number, h: number, col: Color, alpha?: number, rot?: number): void;
+}
+
 export interface SpriteBatchOptions {
   capacity: number;
   texture: Texture;
@@ -16,7 +22,7 @@ export interface SpriteBatchOptions {
   renderOrder?: number;
 }
 
-export class SpriteBatch {
+export class SpriteBatch implements QuadSink {
   readonly mesh: InstancedMesh;
   readonly capacity: number;
   private count = 0;
