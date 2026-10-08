@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutChangeEvent, Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ArenaControls } from "../../arena/ArenaControls";
+import { audio, bindArenaAudio, bindFunEvents, newArenaAudioState } from "../../audio";
 import { TouchControls } from "../../arena/TouchControls";
 import { useArenaDesktopControls } from "../../arena/useArenaDesktopControls";
 import { ARENA_CONFIG, ArenaEngine } from "../../game/arena";
@@ -87,6 +88,20 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
     };
   }, [engine, world]);
 
+  // Audio: engine + banner events -> sounds (before the mount effect below,
+  // so its READY banner and new game are heard); fun-feature events are
+  // tolerant no-ops until the engine emits them.
+  useEffect(() => {
+    const st = newArenaAudioState();
+    const offs = [bindArenaAudio(engine, audio, st, bus), bindFunEvents(engine, audio, st)];
+    audio.music.setScene("game", true);
+    return () => {
+      offs.forEach((off) => off());
+      audio.music.setFever(false);
+      audio.music.setBoss(0);
+    };
+  }, [engine, bus]);
+
   // mount: landscape, new game, intro sweep with the creep paused
   useEffect(() => {
     void lockLandscape();
@@ -123,7 +138,9 @@ export function ArenaScreen({ onExit, onClassic }: { onExit: () => void; onClass
   useEffect(() => {
     world.playing = live;
     clock.paused = paused || glDown;
+    audio.setGamePaused(paused || glDown);
   }, [world, clock, live, paused, glDown]);
+  useEffect(() => () => audio.setGamePaused(false), []);
 
   const restart = useCallback(
     (next: boolean) => {

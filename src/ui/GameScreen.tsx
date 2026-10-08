@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutChangeEvent, Platform, StyleSheet, useWindowDimensions, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { audio, bindClassicAudio } from "../audio";
 import { getFxBus } from "../fx/bus";
 import { attachHaptics } from "../fx/haptics";
 import { getSimClock } from "../game/clock";
@@ -65,6 +66,7 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
   menuRef.current = menu;
 
   useEffect(() => attachHaptics(engine), [engine]);
+  useEffect(() => bindClassicAudio(engine, audio), [engine]);
 
   // Title + Classic are portrait on phones; mode memory for the title
   useEffect(() => {
@@ -91,6 +93,11 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
   const phase = engine.getPhase();
   const playing = PLAYING.has(phase);
   const showTitle = phase === "title" || menu;
+  // Audio: menu loop on the title, game loop in play (level starts restart it)
+  useEffect(() => {
+    if (showTitle) audio.music.setScene("menu");
+    else if (PLAYING.has(engine.getPhase())) audio.music.setScene("game");
+  }, [showTitle, engine]);
 
   const W = area?.width ?? win.width;
   const H = area?.height ?? win.height;
@@ -166,6 +173,7 @@ export function GameScreen({ onArena, autoStart = false }: { onArena: () => void
   // Pause freezes the sim clock (engine + FX); auto-resume outside play.
   useEffect(() => {
     getSimClock(engine).paused = paused && playing;
+    audio.setGamePaused(paused && playing);
     if (!playing && paused) setPaused(false);
   }, [engine, paused, playing]);
 

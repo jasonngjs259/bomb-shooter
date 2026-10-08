@@ -5,6 +5,7 @@
 
 import { LinearGradient } from "expo-linear-gradient";
 import { ReactNode, useState } from "react";
+import { uiSound } from "../audio";
 import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { fonts, gradients, palette } from "./theme";
 import { boxGlow, IS_WEB } from "./webSafe";
@@ -17,6 +18,7 @@ interface ButtonProps {
   style?: StyleProp<ViewStyle>;
   accessibilityHint?: string;
   children?: ReactNode;
+  sound?: "click" | "back"; // UI sound on press
 }
 
 const SIZES = {
@@ -25,7 +27,7 @@ const SIZES = {
   md: { width: 260, height: 48, font: 20 },
 } as const;
 
-export function Button({ label, onPress, variant = "primary", size = "lg", style, accessibilityHint }: ButtonProps) {
+export function Button({ label, onPress, variant = "primary", size = "lg", style, accessibilityHint, sound = "click" }: ButtonProps) {
   const [hover, setHover] = useState(false);
   const [focus, setFocus] = useState(false);
   const dims = SIZES[size];
@@ -35,8 +37,14 @@ export function Button({ label, onPress, variant = "primary", size = "lg", style
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
-      onPress={onPress}
-      onHoverIn={() => setHover(true)}
+      onPress={() => {
+        uiSound(sound);
+        onPress();
+      }}
+      onHoverIn={() => {
+        setHover(true);
+        uiSound("hover");
+      }}
       onHoverOut={() => setHover(false)}
       onFocus={() => setFocus(true)}
       onBlur={() => setFocus(false)}
@@ -73,7 +81,10 @@ export function IconButton({ label, onPress, children }: { label: string; onPres
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={10}
-      onPress={onPress}
+      onPress={() => {
+        uiSound("click");
+        onPress();
+      }}
       style={({ pressed }) => [styles.icon, pressed && styles.pressed]}
     >
       {children}

@@ -1,8 +1,11 @@
-// Pause / settings card: Resume, Restart, Menu (in game) and the Haptics,
-// Reduce motion and Colour assist toggles (persisted in settings).
+// Pause / settings card: Resume, Restart, Menu (in game), the audio rows
+// (Music, SFX, Volume) and the Haptics, Reduce motion and Colour assist
+// toggles (persisted in settings). Scrolls when the screen is too short.
 
 import { ReactNode } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { uiSound } from "../audio";
+import { AudioSettings } from "./AudioSettings";
 import { Button } from "./Button";
 import { reduceMotion, updateSettings, useSettings } from "./settings";
 import { fonts, palette, spacing } from "./theme";
@@ -21,7 +24,10 @@ export function Toggle({ label, value, onChange }: { label: string; value: boole
       accessibilityRole="switch"
       accessibilityState={{ checked: value }}
       accessibilityLabel={label}
-      onPress={() => onChange(!value)}
+      onPress={() => {
+        uiSound("click");
+        onChange(!value);
+      }}
       style={styles.toggleRow}
     >
       <Text style={styles.toggleLabel}>{label}</Text>
@@ -36,30 +42,35 @@ export function PauseMenu({ title, onResume, onRestart, onMenu, children }: Prop
   const s = useSettings();
   return (
     <View style={[StyleSheet.absoluteFill, styles.overlay]}>
-      <View style={styles.card}>
-        <Text style={styles.title}>{title}</Text>
-        <Button label={onRestart ? "Resume" : "Done"} size="lg" onPress={onResume} />
-        {onRestart && <Button label="Restart" size="md" variant="secondary" onPress={onRestart} />}
-        {onMenu && <Button label="Menu" size="md" variant="secondary" onPress={onMenu} />}
-        <View style={styles.toggles}>
-          {Platform.OS !== "web" && (
-            <Toggle label="HAPTICS" value={s.haptics} onChange={(v) => updateSettings({ haptics: v })} />
-          )}
-          <Toggle
-            label="REDUCE MOTION"
-            value={reduceMotion(s)}
-            onChange={(v) => updateSettings({ reduceMotionOverride: v })}
-          />
-          <Toggle label="COLOUR ASSIST" value={s.colourAssist} onChange={(v) => updateSettings({ colourAssist: v })} />
-          {children}
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} bounces={false}>
+        <View style={styles.card}>
+          <Text style={styles.title}>{title}</Text>
+          <Button label={onRestart ? "Resume" : "Done"} size="lg" sound="back" onPress={onResume} />
+          {onRestart && <Button label="Restart" size="md" variant="secondary" onPress={onRestart} />}
+          {onMenu && <Button label="Menu" size="md" variant="secondary" onPress={onMenu} />}
+          <View style={styles.toggles}>
+            <AudioSettings />
+            {Platform.OS !== "web" && (
+              <Toggle label="HAPTICS" value={s.haptics} onChange={(v) => updateSettings({ haptics: v })} />
+            )}
+            <Toggle
+              label="REDUCE MOTION"
+              value={reduceMotion(s)}
+              onChange={(v) => updateSettings({ reduceMotionOverride: v })}
+            />
+            <Toggle label="COLOUR ASSIST" value={s.colourAssist} onChange={(v) => updateSettings({ colourAssist: v })} />
+            {children}
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: { backgroundColor: palette.overlay, alignItems: "center", justifyContent: "center", padding: spacing.lg },
+  scroll: { flexGrow: 0, maxHeight: "100%", alignSelf: "stretch" },
+  scrollContent: { alignItems: "center", paddingVertical: spacing.sm },
   card: {
     width: 320,
     maxWidth: "92%",

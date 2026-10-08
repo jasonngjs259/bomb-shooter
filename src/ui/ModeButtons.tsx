@@ -8,6 +8,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useEffect, useRef } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { uiSound } from "../audio";
 import { formatScore } from "./Hud";
 import { fonts, gradients, palette } from "./theme";
 
@@ -68,8 +69,14 @@ export function ModeButtons({ desktop, selected, arenaNew, bestArena, bestClassi
         key={mode}
         accessibilityRole="button"
         accessibilityLabel={arena ? "Play Arena 360" : "Play Classic"}
-        onPress={() => onPlay(mode)}
-        onHoverIn={() => onSelect(mode)}
+        onPress={() => {
+          uiSound("click");
+          onPlay(mode);
+        }}
+        onHoverIn={() => {
+          if (selected !== mode) uiSound("hover");
+          onSelect(mode);
+        }}
         style={({ pressed }) => [
           desktop ? styles.card : arena ? styles.primary : styles.secondary,
           !arena && styles.secondaryFill,

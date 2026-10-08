@@ -17,7 +17,11 @@
       "expo-status-bar",
       "expo-asset",
       "expo-font",
-      "expo-screen-orientation"
+      "expo-screen-orientation",
+      [
+        "expo-audio",
+        { "microphonePermission": false, "recordAudioAndroid": false, "enableBackgroundPlayback": false }
+      ]
     ]
   }
 }
