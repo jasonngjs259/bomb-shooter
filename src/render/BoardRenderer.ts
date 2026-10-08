@@ -6,6 +6,7 @@
 // stay untouched.
 
 import type { ComponentType } from "react";
+import type { SimClock } from "../game/simClock";
 import type { GameEngineView, Vec2 } from "../game/types";
 import type { BoardLayout } from "./layout";
 
@@ -20,6 +21,19 @@ export interface BoardRendererProps {
   layout: BoardLayout;
   // True while the player is aiming (finger down, mouse hover, keyboard).
   showAimGuide: boolean;
+  // Optional: the simulation clock. Self-animated renderers subscribe to
+  // clock.onFrame() to draw right after each engine step, and may request
+  // hit-stop / slow motion. Renderers that ignore it keep working.
+  clock?: SimClock;
+}
+
+// Extra room around the logical board that a renderer draws into (frame,
+// rails, ceiling slab), in logical units. The layout reserves it.
+export interface FrameInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
 }
 
 export interface BoardRenderer {
@@ -29,4 +43,11 @@ export interface BoardRenderer {
   // the orthographic inverse of `layout`. A perspective renderer should
   // override it (e.g. raycast onto the board plane).
   screenToBoard?: (layout: BoardLayout, x: number, y: number) => Vec2;
+  // True if the renderer animates itself every frame (reads the engine in its
+  // own loop), so the screen doesn't need a React re-render per engine change.
+  selfAnimated?: boolean;
+  frameInsets?: FrameInsets;
+  // True if the renderer draws its own full-screen background, so the screen
+  // should render it filling the whole window behind the HUD.
+  fullScreen?: boolean;
 }

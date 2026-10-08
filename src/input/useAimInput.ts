@@ -20,9 +20,11 @@ interface Options {
   layout: BoardLayout;
   screenToBoard: (layout: BoardLayout, x: number, y: number) => Vec2;
   onStart: () => void;
+  onPause?: () => void;
+  blocked?: () => boolean;
 }
 
-export function useAimInput({ engine, layout, screenToBoard, onStart }: Options) {
+export function useAimInput({ engine, layout, screenToBoard, onStart, onPause, blocked }: Options) {
   const [pointerDown, setPointerDown] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [keyboardAim, setKeyboardAim] = useState(false);
@@ -79,7 +81,7 @@ export function useAimInput({ engine, layout, screenToBoard, onStart }: Options)
     return Gesture.Simultaneous(pan, hover);
   }, [engine]);
 
-  useKeyboardControls({ engine, onStart, onAimKey: () => setKeyboardAim(true) });
+  useKeyboardControls({ engine, onStart, onPause, blocked, onAimKey: () => setKeyboardAim(true) });
 
   return { gesture, showAimGuide: pointerDown || hovering || keyboardAim };
 }

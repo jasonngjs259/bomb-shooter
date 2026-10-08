@@ -2,7 +2,8 @@
 //   Left/Right or A/D  rotate aim (hold for continuous turn)
 //   Space              fire (or start/restart from title / end screens)
 //   Enter              start/restart
-//   X or Shift         swap current and next bomb
+//   X or Shift         swap current and next bomb (right-click too)
+//   Escape or P        pause / resume
 
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
@@ -14,12 +15,14 @@ interface Options {
   engine: GameEngine;
   onStart: () => void; // start / restart when not playing
   onAimKey: () => void; // keyboard took over aiming (show the guide)
+  onPause?: () => void; // toggle pause
+  blocked?: () => boolean; // true while a modal (pause menu) is open
 }
 
-export function useKeyboardControls({ engine, onStart, onAimKey }: Options) {
+export function useKeyboardControls({ engine, onStart, onAimKey, onPause, blocked }: Options) {
   // Keep callbacks fresh without re-binding listeners
-  const cbs = useRef({ onStart, onAimKey });
-  cbs.current = { onStart, onAimKey };
+  const cbs = useRef({ onStart, onAimKey, onPause, blocked });
+  cbs.current = { onStart, onAimKey, onPause, blocked };
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") return;
@@ -56,6 +59,11 @@ export function useKeyboardControls({ engine, onStart, onAimKey }: Options) {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === "Escape" || e.code === "KeyP") {
+        if (!e.repeat && (isPlaying() || cbs.current.blocked?.())) cbs.current.onPause?.();
+        return;
+      }
+      if (cbs.current.blocked?.()) return;
       switch (e.code) {
         case "ArrowLeft":
         case "KeyA":
@@ -94,13 +102,21 @@ export function useKeyboardControls({ engine, onStart, onAimKey }: Options) {
       held.left = held.right = false;
     };
 
+    // Right-click swaps (and never opens the browser menu over the game)
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      if (!cbs.current.blocked?.() && isPlaying()) engine.swapBomb();
+    };
+
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);
+    window.addEventListener("contextmenu", onContextMenu);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
+      window.removeEventListener("contextmenu", onContextMenu);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [engine]);

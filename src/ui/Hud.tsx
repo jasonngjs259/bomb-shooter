@@ -1,72 +1,231 @@
-// In-game header: score (+combo), best, next bomb (tap to swap) and the
-// countdown to the next ceiling drop.
+// In-game HUD (spec 8.2 / 8.3). Phone: one 56pt panel bar (score, ceiling
+// pips, best, pause). Wide web (>= 1100pt): two side panels next to the
+// board. Plain RN views above the canvas, so the HUD never shakes.
 
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BOMB_COLORS, CEILING_EVERY_SHOTS, MAX_COMBO_MULTIPLIER } from "../game/constants";
-import { colors, fontSizes, radii, spacing } from "./theme";
+import { useEffect } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  cancelAnimation,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
+import { CEILING_EVERY_SHOTS, MAX_COMBO_MULTIPLIER } from "../game/constants";
+import { BoardLayout } from "../render/layout";
+import { IconButton } from "./Button";
+import { bombStyle, fonts, palette } from "./theme";
 
-interface HudProps {
+export const HUD_BAR_HEIGHT = 56;
+
+export const formatScore = (n: number, pad = 6) => {
+  const s = String(Math.max(0, Math.floor(n))).padStart(pad, "0");
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+};
+
+export interface HudData {
   score: number;
   best: number;
   combo: number;
-  nextColorIndex: number;
   shotsUntilCeiling: number;
-  onSwap: () => void;
+  nextColorIndex: number;
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+// Score with the 160ms bump + gold flash on change
+function ScoreValue({ score, size, reduced }: { score: number; size: number; reduced: boolean }) {
+  const bump = useSharedValue(0);
+  useEffect(() => {
+    if (score === 0) return;
+    bump.value = withSequence(withTiming(1, { duration: 80 }), withTiming(0, { duration: 80 }));
+  }, [score, bump]);
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: reduced ? 1 : 1 + 0.12 * bump.value }],
+    color: interpolateColor(bump.value, [0, 1], [palette.textPrimary, palette.gold]),
+  }));
   return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+    <Animated.Text style={[styles.score, { fontSize: size, lineHeight: size * 1.15 }, style]} numberOfLines={1}>
+      {formatScore(score)}
+    </Animated.Text>
+  );
+}
+
+// Five diamonds that fill as shots are fired; all blink red on the last one
+export function CeilingPips({ shotsUntilCeiling, size = 10 }: { shotsUntilCeiling: number; size?: number }) {
+  const fired = CEILING_EVERY_SHOTS - shotsUntilCeiling;
+  const last = shotsUntilCeiling === 1;
+  const blink = useSharedValue(1);
+  useEffect(() => {
+    if (last) blink.value = withRepeat(withSequence(withTiming(0.25, { duration: 125 }), withTiming(1, { duration: 125 })), -1);
+    else {
+      cancelAnimation(blink);
+      blink.value = 1;
+    }
+  }, [last, blink]);
+  const blinkStyle = useAnimatedStyle(() => ({ opacity: blink.value }));
+  return (
+    <Animated.View style={[styles.pips, last && blinkStyle]} accessibilityLabel={`${shotsUntilCeiling} shots until the ceiling drops`}>
+      {Array.from({ length: CEILING_EVERY_SHOTS }, (_, i) => (
+        <View
+          key={i}
+          style={[
+            styles.pip,
+            { width: size, height: size },
+            last ? styles.pipDanger : i < fired ? styles.pipOn : styles.pipOff,
+          ]}
+        />
+      ))}
+    </Animated.View>
+  );
+}
+
+function PauseGlyph() {
+  return (
+    <View style={styles.pauseGlyph}>
+      <View style={styles.pauseBar} />
+      <View style={styles.pauseBar} />
     </View>
   );
 }
 
-export function Hud({ score, best, combo, nextColorIndex, shotsUntilCeiling, onSwap }: HudProps) {
+export function HudBar({ data, onPause, reduced, width }: { data: HudData; onPause: () => void; reduced: boolean; width: number }) {
   return (
-    <View style={styles.row}>
-      <View style={styles.scoreBlock}>
-        <Stat label="SCORE" value={String(score)} />
-        {combo > 1 && <Text style={styles.combo}>x{Math.min(combo, MAX_COMBO_MULTIPLIER)}</Text>}
+    <View style={[styles.bar, { width }]}>
+      <View style={styles.col}>
+        <Text style={styles.label}>SCORE</Text>
+        <ScoreValue score={data.score} size={24} reduced={reduced} />
       </View>
-      <Stat label="BEST" value={String(Math.max(best, score))} />
+      <View style={[styles.col, styles.centre]}>
+        <Text style={styles.label}>SLAM</Text>
+        <CeilingPips shotsUntilCeiling={data.shotsUntilCeiling} />
+      </View>
+      <View style={[styles.col, styles.right]}>
+        <Text style={styles.label}>BEST</Text>
+        <Text style={styles.best}>{formatScore(Math.max(data.best, data.score), 1)}</Text>
+      </View>
+      <IconButton label="Pause" onPress={onPause}>
+        <PauseGlyph />
+      </IconButton>
+    </View>
+  );
+}
 
-      <Pressable accessibilityRole="button" accessibilityLabel="Swap bomb" onPress={onSwap} style={styles.stat}>
-        <Text style={styles.statLabel}>NEXT</Text>
-        <View style={[styles.nextDot, { backgroundColor: BOMB_COLORS[nextColorIndex] ?? colors.textMuted }]} />
-      </Pressable>
+const CONTROLS_WEB = [
+  ["MOUSE", "aim"],
+  ["CLICK", "fire"],
+  ["← / →", "fine aim"],
+  ["SPACE", "fire"],
+  ["X / RIGHT-CLICK", "swap"],
+  ["ESC", "pause"],
+];
 
-      <View style={styles.stat}>
-        <Text style={styles.statLabel}>CEILING IN</Text>
-        <View style={styles.pips}>
-          {Array.from({ length: CEILING_EVERY_SHOTS }, (_, i) => (
-            <View key={i} style={[styles.pip, i < shotsUntilCeiling ? styles.pipOn : styles.pipOff]} />
+export function SidePanels({
+  data,
+  layout,
+  onPause,
+  onSwap,
+  reduced,
+}: {
+  data: HudData;
+  layout: BoardLayout;
+  onPause: () => void;
+  onSwap: () => void;
+  reduced: boolean;
+}) {
+  const left = Math.max(16, layout.offsetX - 32 - 240);
+  const right = Math.min(layout.containerWidth - 16 - 240, layout.offsetX + layout.width + 32);
+  const top = layout.offsetY + layout.height / 2 - 150;
+  const combo = Math.min(data.combo, MAX_COMBO_MULTIPLIER);
+  const next = bombStyle(data.nextColorIndex);
+  return (
+    <>
+      <View style={[styles.panel, { left, top }]}>
+        <Text style={styles.label}>SCORE</Text>
+        <ScoreValue score={data.score} size={36} reduced={reduced} />
+        <Text style={[styles.label, styles.gap]}>BEST</Text>
+        <Text style={[styles.best, styles.bestLarge]}>{formatScore(Math.max(data.best, data.score), 1)}</Text>
+        <Text style={[styles.label, styles.gap]}>COMBO</Text>
+        <View style={styles.meter}>
+          {Array.from({ length: MAX_COMBO_MULTIPLIER }, (_, i) => (
+            <View key={i} style={[styles.meterCell, i < combo && { backgroundColor: i >= 3 ? palette.gold : i === 2 ? palette.magenta : palette.cyan }]} />
+          ))}
+        </View>
+        <Text style={styles.comboText}>{combo > 1 ? `x${combo}` : "—"}</Text>
+      </View>
+      <View style={[styles.panel, { left: right, top }]}>
+        <View style={styles.rowBetween}>
+          <Text style={styles.label}>NEXT</Text>
+          <IconButton label="Pause" onPress={onPause}>
+            <PauseGlyph />
+          </IconButton>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Swap bomb"
+          onPress={onSwap}
+          style={[styles.nextSwatch, { backgroundColor: next.base, boxShadow: `0px 0px 16px ${next.glow}` }, Platform.OS === "web" && styles.pointer]}
+        />
+        <Text style={[styles.label, styles.gap]}>SLAM IN</Text>
+        <CeilingPips shotsUntilCeiling={data.shotsUntilCeiling} size={12} />
+        <View style={styles.controls}>
+          {CONTROLS_WEB.map(([key, action]) => (
+            <View key={key} style={styles.rowBetween}>
+              <Text style={styles.key}>{key}</Text>
+              <Text style={styles.action}>{action}</Text>
+            </View>
           ))}
         </View>
       </View>
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
+  bar: {
+    height: HUD_BAR_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    alignSelf: "center",
+    paddingLeft: 16,
+    paddingRight: 6,
+    gap: 8,
+    backgroundColor: palette.panel,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: palette.panelBorder,
   },
-  scoreBlock: { flexDirection: "row", alignItems: "flex-end", gap: spacing.xs },
-  stat: { alignItems: "center", minWidth: 56 },
-  statLabel: { color: colors.textMuted, fontSize: fontSizes.xs, fontWeight: "700", letterSpacing: 1 },
-  statValue: { color: colors.text, fontSize: fontSizes.lg, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  combo: { color: colors.accent, fontSize: fontSizes.md, fontWeight: "900", marginBottom: 2 },
-  nextDot: { width: 22, height: 22, borderRadius: 11, marginTop: 3, borderWidth: 1, borderColor: "rgba(0,0,0,0.35)" },
-  pips: { flexDirection: "row", gap: 3, marginTop: 8 },
-  pip: { width: 8, height: 8, borderRadius: 4 },
-  pipOn: { backgroundColor: colors.text },
-  pipOff: { backgroundColor: colors.boardEdge },
+  col: { flex: 1, justifyContent: "center" },
+  centre: { alignItems: "center" },
+  right: { alignItems: "flex-end", paddingRight: 4 },
+  label: { fontFamily: fonts.label, fontSize: 13, letterSpacing: 2, color: palette.textSecondary },
+  score: { fontFamily: fonts.score, color: palette.textPrimary, fontVariant: ["tabular-nums"] },
+  best: { fontFamily: fonts.score, fontSize: 16, color: palette.gold, fontVariant: ["tabular-nums"] },
+  bestLarge: { fontSize: 22 },
+  pips: { flexDirection: "row", gap: 6, marginTop: 4 },
+  pip: { transform: [{ rotate: "45deg" }], borderWidth: 1, borderColor: "rgba(255, 61, 203, 0.6)" },
+  pipOn: { backgroundColor: palette.magenta },
+  pipOff: { backgroundColor: "transparent" },
+  pipDanger: { backgroundColor: palette.danger, borderColor: palette.danger },
+  pauseGlyph: { flexDirection: "row", gap: 4 },
+  pauseBar: { width: 4, height: 14, borderRadius: 1, backgroundColor: palette.textPrimary },
+  panel: {
+    position: "absolute",
+    width: 240,
+    padding: 20,
+    backgroundColor: palette.panel,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: palette.panelBorder,
+  },
+  gap: { marginTop: 16 },
+  meter: { flexDirection: "row", gap: 6, marginTop: 8 },
+  meterCell: { flex: 1, height: 10, borderRadius: 3, backgroundColor: "rgba(124, 92, 255, 0.25)" },
+  comboText: { fontFamily: fonts.title, fontSize: 22, color: palette.textPrimary, marginTop: 6 },
+  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  nextSwatch: { width: 44, height: 44, borderRadius: 22, marginTop: 6, borderWidth: 2, borderColor: "rgba(255,255,255,0.35)" },
+  pointer: { cursor: "pointer" },
+  controls: { marginTop: 18, gap: 4 },
+  key: { fontFamily: fonts.label, fontSize: 14, color: palette.cyan, letterSpacing: 1 },
+  action: { fontFamily: fonts.body, fontSize: 15, color: palette.textSecondary },
 });

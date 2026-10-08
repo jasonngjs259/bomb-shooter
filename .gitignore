@@ -31,3 +31,6 @@ expo-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Skia web: CanvasKit WASM is copied from node_modules on postinstall
+/public/canvaskit.wasm

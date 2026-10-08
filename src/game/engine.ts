@@ -24,8 +24,8 @@
  *   getShotsUntilCeiling(), getScore(), getCombo(), getPhase(), getTime()
  *   getRevision()         increments whenever anything visible changed
  *
- * COMMANDS: newGame(), aimAt(x,y), setAngle(deg), nudgeAngle(delta), fire(),
- *   swapBomb(), update(dt).
+ * COMMANDS: newGame(), showTitle(), aimAt(x,y), setAngle(deg), nudgeAngle(delta),
+ *   fire(), swapBomb(), update(dt).
  *
  * EVENTS (on(name, cb) returns unsubscribe): see EngineEvents in types.ts —
  *   shoot, wallBounce, snap, pop, drop, ceilingDrop, swap, gameOver, won,
@@ -163,6 +163,14 @@ export class GameEngine {
     this.setupBoard();
     this.events.emit("scoreChanged", { score: 0, delta: -previous });
     this.setPhase("ready");
+  }
+
+  // Back to the title backdrop (e.g. "Menu" from a pause / end card).
+  showTitle() {
+    const previous = this.score;
+    this.setupBoard();
+    if (previous !== 0) this.events.emit("scoreChanged", { score: 0, delta: -previous });
+    this.setPhase("title");
   }
 
   // Aim at a board point (pointer position in logical units)

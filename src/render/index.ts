@@ -1,11 +1,12 @@
 // Single switch point for the board renderer.
 import { BoardRenderer } from "./BoardRenderer";
-import { basicRenderer } from "./basic";
 import { screenToBoardOrtho } from "./layout";
+import { skiaRenderer } from "./skia";
 
-export const activeRenderer: BoardRenderer = basicRenderer;
+// Swap to `basicRenderer` (./basic) for the plain RN-View fallback.
+export const activeRenderer: BoardRenderer = skiaRenderer;
 
 export const screenToBoard = activeRenderer.screenToBoard ?? screenToBoardOrtho;
 
-export type { BoardRenderer, BoardRendererProps } from "./BoardRenderer";
+export type { BoardRenderer, BoardRendererProps, FrameInsets } from "./BoardRenderer";
 export type { BoardLayout } from "./layout";
