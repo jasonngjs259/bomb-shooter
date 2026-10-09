@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
 import { AccessibilityInfo } from "react-native";
 
 export type FxQuality = "high" | "low";
-export type RollKey = "space" | "shift"; // Arena desktop: which key rolls (L5+)
+export type RollKey = "space" | "shift"; // Arena desktop: which key rolls (every level)
 
 export interface Settings {
   haptics: boolean;
@@ -20,7 +20,7 @@ export interface Settings {
   music: boolean; // music on/off
   sfx: boolean; // sound effects on/off
   volume: number; // master volume 0..1
-  tips: boolean; // Arena one-time feature tips (and the L5 roll tutorial)
+  tips: boolean; // Arena one-time feature tips (and the L5 roller lesson)
   rollKey: RollKey; // "shift": Space keeps FIRE, Shift rolls (and no longer swaps)
 }
 

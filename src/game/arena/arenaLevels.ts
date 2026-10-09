@@ -4,11 +4,11 @@
 // tuned with scripts/arena-balance.ts (spec value in [brackets] where changed):
 //
 //  Lv  field                 new                                   also                                           rotation   par
-//  1   60  / 0.0298          pickups: rainbow, freeze              -                                              -           60
+//  1   60  / 0.0298          pickups: rainbow, freeze, ROLL        -                                              -           60
 //  2   75  / 0.0322          armored x5, FEVER                     pickups                                        -           75
 //  3   BOSS Mk I ring 48     boss, mega pickup                     armored x4                                     -           90
 //  4   90  / 0.035           ticking x2 (24 s [20 s]), rotation, lightning  armored 5 [6]                         +4 deg/s    95
-//  5   102 / 0.038           rollers x3 (1 live), ROLL             armored 6, ticking 2                           -          100
+//  5   102 / 0.038           rollers x3 (1 live)                   armored 6, ticking 2                           -          100
 //  6   BOSS Mk II ring 60    boss rollers in phase 2               armored 6, ticking 2 (20 s), creep 0.038       -3 deg/s   110
 //  7   114 / 0.041           double ring                           armored 8, ticking 3 (18 s), rollers 3         static     115
 //  8   126 / 0.044           counter-rotating double ring          armored 10, ticking 3, rollers 4 (2 live)      +5/-3      120
@@ -24,6 +24,9 @@
 //  Boss Mk n (bossDef): HP 20 / 24 / 26 / 28 ... (+2 per Mk) [10+4(n-1) = 10/14/18/22] (the post-pop clear window
 //      makes hits land, so HP carries the fight length); shield max(8, min(12, 4+2n)) = 8/8/10/12 [6+2n cap 14];
 //      orbit min(64, 30+6n) = 36/42/48/54 deg/s [24+12n cap 80]; regrow Mk I 7 s, Mk II-III 8 s, IV+ 9 s [max(3.5, 8-n) = 7/6/5/4].
+// Dodge ROLL is available on every level (LevelDef.roll is always true; it was
+// L5+ until players read the inert Space / ROLL key on L1-4 as a bug), so the
+// "roll" featureIntro is introduced at L1; rollers still start at L5.
 // Rotation sign: + = angle increasing from +x towards +z (clockwise seen from above with +z down).
 
 import type { ArenaConfig } from "./types";
@@ -124,7 +127,7 @@ function baseDef(c: ArenaConfig, level: number): Omit<LevelDef, "features" | "in
   return {
     level: lv, bombs, creepBase, armored: r.armored, ticking: r.ticking, tickTimer: r.tickTimer,
     rollers: r.rollers, rollersLive: r.rollersLive, rotation: [r.rotation[0], r.rotation[1]], doubleRing: r.doubleRing,
-    boss, pickups: pickupKinds(lv), fever: lv >= 2, roll: lv >= 5, par: r.par,
+    boss, pickups: pickupKinds(lv), fever: lv >= 2, roll: true, par: r.par,
   };
 }
 

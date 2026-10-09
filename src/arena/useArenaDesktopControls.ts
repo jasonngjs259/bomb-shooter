@@ -5,8 +5,8 @@
 //   screen and only while the cursor is over the playfield itself (not over
 //   a button / HUD card), up to 180 deg/s at the very edge
 //   left click / F fire (held: fever auto-fire via setFireHeld)
-//   Space: ROLL from L5 (roll unlocked), FIRE before (keyMap.ts); setting
-//   rollKey "shift" keeps Space = FIRE and makes Shift = ROLL
+//   Space = ROLL on every level (keyMap.ts); setting rollKey "shift" keeps
+//   Space = FIRE and makes Shift = ROLL (read live: no restart needed)
 //   X / Shift / right click swap (a denied swap blips)   Esc / P pause
 // Esc while locked is eaten by the browser and releases the lock, which we
 // treat as pause. The "click to play" click that takes the lock never fires.

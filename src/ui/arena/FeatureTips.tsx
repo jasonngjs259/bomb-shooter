@@ -7,7 +7,7 @@
 // shield pop and the first wall push for the follow-up tips), filtered
 // by the persisted introsSeen and the Settings "Tips" toggle. Never shown
 // during the intro sweep, a boss phase shift or the end sequence (the
-// screen passes `allowed`). The L5 roll lesson is RollTutorial below.
+// screen passes `allowed`). The L1 roll tip is "rollTip"; the L5 roller lesson is RollTutorial.
 
 import { memo, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
@@ -24,7 +24,9 @@ const native = Platform.OS !== "web";
 const HOLD_MS = 2800;
 const PHASE_SHIFT_HOLD_MS = 1600;
 
-export type TipId = Exclude<FeatureId, "roll"> | "feverStart" | "bossWeak" | "wallPush";
+// The "roll" feature (L1) shows as "rollTip"; "roll" itself is the L5 roller
+// lesson's id in introsSeen (RollTutorial), kept for existing saves.
+export type TipId = Exclude<FeatureId, "roll"> | "rollTip" | "feverStart" | "bossWeak" | "wallPush";
 
 // <= 6 words each.
 export const TIP_COPY: Record<TipId, string> = {
@@ -43,7 +45,14 @@ export const TIP_COPY: Record<TipId, string> = {
   roller: "SHOOT ROLLERS OR ROLL AWAY",
   doubleRing: "TWO RINGS: AIM THROUGH THE GAPS",
   wallPush: "WRONG COLOUR? PUSH THEM BACK!",
+  rollTip: "TAP ROLL TO DODGE", // phone; desktop copy: tipCopy()
 };
+
+// Platform / setting specific copy (<= 6 words).
+export function tipCopy(id: TipId, desktop: boolean, rollKey: "space" | "shift"): string {
+  if (id === "rollTip" && desktop) return rollKey === "shift" ? "PRESS SHIFT TO DODGE ROLL" : "PRESS SPACE TO DODGE ROLL";
+  return TIP_COPY[id];
+}
 
 const TIP_ACCENT: Partial<Record<TipId, string>> = {
   fever: palette.magenta, feverStart: palette.gold, boss: palette.danger, bossWeak: palette.gold, ticking: palette.danger,
@@ -55,10 +64,11 @@ const wantTip = (id: string) => getSettings().tips && !getProgress().introsSeen.
 interface Props {
   engine: ArenaEngine;
   allowed: boolean; // play is live (not intro / paused / ended / roll lesson)
+  desktop: boolean; // keyboard copy
   top: number;
 }
 
-export const FeatureTips = memo(function FeatureTips({ engine, allowed, top }: Props) {
+export const FeatureTips = memo(function FeatureTips({ engine, allowed, desktop, top }: Props) {
   const settings = useSettings();
   const [tip, setTip] = useState<{ id: TipId; key: number } | null>(null);
   const q = useRef(
@@ -74,7 +84,7 @@ export const FeatureTips = memo(function FeatureTips({ engine, allowed, top }: P
     let shieldSeen = false;
     const offs = [
       engine.on("featureIntro", ({ feature }) => {
-        if (feature !== "roll") q.push(feature);
+        q.push(feature === "roll" ? "rollTip" : feature);
       }),
       engine.on("feverStart", () => q.push("feverStart")),
       engine.on("bossShieldPop", () => {
@@ -151,9 +161,9 @@ export const FeatureTips = memo(function FeatureTips({ engine, allowed, top }: P
   return (
     <View style={[styles.wrap, { top }]}>
       <Animated.View style={{ opacity, transform: [...ownLayer, { translateY: ty }] }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`${TIP_COPY[tip.id]}. Dismiss tip`} onPress={dismiss} style={[styles.pill, { borderColor: accent }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${tipCopy(tip.id, desktop, settings.rollKey)}. Dismiss tip`} onPress={dismiss} style={[styles.pill, { borderColor: accent }]}>
           <View style={[styles.dot, { backgroundColor: accent }]} />
-          <Text style={styles.text}>{TIP_COPY[tip.id]}</Text>
+          <Text style={styles.text}>{tipCopy(tip.id, desktop, settings.rollKey)}</Text>
         </Pressable>
       </Animated.View>
     </View>

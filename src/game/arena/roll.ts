@@ -1,4 +1,4 @@
-// Dodge ROLL (unlocked L5) plus the player-hit state it interacts with.
+// Dodge ROLL (available from L1) plus the player-hit state it interacts with.
 //   Roll: 3.0 w over 0.5 s, v(t) = 2D/T (1 - t/T), clamped to the arena;
 //   with no stick input it dodges smart (perpendicular to an incoming roller
 //   within 6 w, else sideways to the facing, towards open space);

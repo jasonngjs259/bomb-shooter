@@ -12,6 +12,7 @@ import type { ArenaEngine } from "../../game/arena";
 import type { ArenaWorld, Threat } from "../../render/arena/ArenaWorld";
 import { Button } from "../Button";
 import { fonts, palette } from "../theme";
+import { getSettings } from "../settings";
 import { ownLayer } from "../webSafe";
 
 const native = Platform.OS !== "web";
@@ -97,7 +98,7 @@ export function ClickToPlay({ onPress, fallbackHint }: { onPress: () => void; fa
       <View style={styles.clickCard}>
         <Text style={styles.clickTitle}>CLICK TO PLAY</Text>
         <Text style={styles.clickSub}>
-          {fallbackHint ? "MOUSE NEAR THE EDGE TURNS · CLICK FIRES" : "MOUSE TURNS · WASD MOVES · ESC PAUSES"}
+          {fallbackHint ? "MOUSE NEAR THE EDGE TURNS · CLICK FIRES" : `MOUSE TURNS · CLICK FIRES · ${getSettings().rollKey === "shift" ? "SHIFT" : "SPACE"} ROLLS · ESC PAUSES`}
         </Text>
       </View>
     </Pressable>

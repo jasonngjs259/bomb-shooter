@@ -221,7 +221,7 @@ export class ArenaEngine {
     return true;
   }
 
-  // Dodge roll (L5+): world direction, |v| <= 0.3 = move input, else backward.
+  // Dodge roll (every level): world direction, |v| <= 0.3 = move input, else backward.
   // True if it started or was buffered.
   roll(dirX: number, dirZ: number): boolean {
     const ok = this.sys.roll.request(dirX, dirZ);

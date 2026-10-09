@@ -1,9 +1,8 @@
-// Headless checks for the Arena desktop key mapping (src/arena/keyMap.ts,
-// fun-pass spec section 2.5): Space = FIRE before roll unlocks (L1-4) and
-// ROLL from L5; F / left click = FIRE; X / right click / Shift = SWAP; the
-// rollKey "shift" setting (Space stays FIRE, Shift rolls and stops swapping
-// once roll is unlocked); the legend; and the mapped actions against the
-// real engine at L4 and L5.
+// Headless checks for the Arena desktop key mapping (src/arena/keyMap.ts):
+// roll is available from L1, so Space = ROLL on every level (default), F /
+// left click = FIRE, Shift / X / right click = SWAP; with rollKey "shift",
+// Shift = ROLL and Space = FIRE. Also the legend, the live setting switch,
+// the real engine on L1-L5, the backward roll and fever hold-to-fire.
 // Run: npx tsx scripts/arena-keymap.ts
 
 import { keyAction, keyLegend, mouseAction } from "../src/arena/keyMap";
@@ -15,25 +14,23 @@ const assert = (cond: unknown, msg: string) => {
   if (!cond) throw new Error(`ASSERT: ${msg}`);
 };
 
-const L4 = { rollUnlocked: false, rollKey: "space" as const };
-const L5 = { rollUnlocked: true, rollKey: "space" as const };
-const L4s = { rollUnlocked: false, rollKey: "shift" as const };
-const L5s = { rollUnlocked: true, rollKey: "shift" as const };
+const SP = { rollKey: "space" as const };
+const SH = { rollKey: "shift" as const };
+const SPu = { rollKey: "space" as const, rollUnlocked: true };
+const SHu = { rollKey: "shift" as const, rollUnlocked: true };
+const SPl = { rollKey: "space" as const, rollUnlocked: false }; // custom levelDef roll: false only
+const SHl = { rollKey: "shift" as const, rollUnlocked: false };
 
-// Space
-assert(keyAction("Space", L4) === "fire", "L1-4: Space fires");
-assert(keyAction("Space", L5) === "roll", "L5+: Space rolls");
-assert(keyAction("Space", L4s) === "fire" && keyAction("Space", L5s) === "fire", "shift setting: Space always fires");
-// F
-for (const c of [L4, L5, L4s, L5s]) assert(keyAction("KeyF", c) === "fire", "F always fires");
-// Shift
-for (const code of ["ShiftLeft", "ShiftRight"]) {
-  assert(keyAction(code, L4) === "swap" && keyAction(code, L5) === "swap", `${code} swaps (space setting)`);
-  assert(keyAction(code, L4s) === "swap", `${code} still swaps before L5 with the shift setting`);
-  assert(keyAction(code, L5s) === "roll", `${code} rolls from L5 with the shift setting`);
-}
-// X / R / pause / unmapped
-for (const c of [L4, L5, L4s, L5s]) {
+// default "space": Space rolls on every level; click / F fire; Shift / X / right click swap
+assert(keyAction("Space", SP) === "roll" && keyAction("Space", SPu) === "roll", "space setting: Space rolls (every level)");
+for (const code of ["ShiftLeft", "ShiftRight"]) assert(keyAction(code, SP) === "swap", `space setting: ${code} swaps`);
+// "shift": Shift rolls, Space fires, X / right click swap
+assert(keyAction("Space", SH) === "fire" && keyAction("Space", SHu) === "fire", "shift setting: Space fires");
+for (const code of ["ShiftLeft", "ShiftRight"]) assert(keyAction(code, SH) === "roll" && keyAction(code, SHu) === "roll", `shift setting: ${code} rolls`);
+// a level without roll (custom levelDef only): old meanings
+assert(keyAction("Space", SPl) === "fire" && keyAction("ShiftLeft", SHl) === "swap", "roll: false level: Space fires, Shift swaps");
+for (const c of [SP, SH, SPu, SHu, SPl, SHl]) {
+  assert(keyAction("KeyF", c) === "fire", "F always fires");
   assert(keyAction("KeyX", c) === "swap", "X swaps");
   assert(keyAction("KeyR", c) === "face", "R faces the threat");
   assert(keyAction("Escape", c) === "pause" && keyAction("KeyP", c) === "pause", "Esc / P pause");
@@ -42,11 +39,11 @@ for (const c of [L4, L5, L4s, L5s]) {
 // mouse
 assert(mouseAction(0) === "fire" && mouseAction(2) === "swap" && mouseAction(1) === null, "left fire, right swap, middle nothing");
 // legend
-assert(keyLegend(L4).roll === null && keyLegend(L4).fire.includes("SPACE"), "legend L1-4: no roll, Space fires");
-assert(keyLegend(L5).roll === "SPACE" && keyLegend(L5).fire === "CLICK/F" && keyLegend(L5).swap.includes("SHIFT"), "legend L5 space");
-assert(keyLegend(L5s).roll === "SHIFT" && keyLegend(L5s).fire.includes("SPACE") && keyLegend(L5s).swap === "X", "legend L5 shift");
+assert(keyLegend(SP).roll === "SPACE" && keyLegend(SP).fire === "CLICK/F" && keyLegend(SP).swap === "X/SHIFT", "legend space");
+assert(keyLegend(SH).roll === "SHIFT" && keyLegend(SH).fire === "CLICK/F/SPACE" && keyLegend(SH).swap === "X", "legend shift");
+assert(keyLegend(SPl).roll === null, "legend without roll");
 
-// against the real engine: dispatch like useArenaDesktopControls does
+// against the real engine: dispatch like useArenaDesktopControls does, on L1-L5 and a boss level
 const run = (level: number, code: string, rollKey: "space" | "shift") => {
   const e = new ArenaEngine({ random: () => 0.37 });
   e.newGame({ level });
@@ -62,20 +59,31 @@ const run = (level: number, code: string, rollKey: "space" | "shift") => {
   else if (a === "roll") e.roll(0, 0);
   else if (a === "swap") e.swapBomb();
   e.update(1 / 30);
-  return { shots: shots.length, rolls: rolls.length, swaps: swaps.length, state: e.getRoll().state };
+  return { shots: shots.length, rolls: rolls.length, swaps: swaps.length };
 };
-let r = run(4, "Space", "space");
-assert(r.shots === 1 && r.rolls === 0 && r.state === "locked", "engine L4: Space shoots, roll locked");
-r = run(5, "Space", "space");
-assert(r.rolls === 1 && r.shots === 0, "engine L5: Space rolls");
-r = run(5, "KeyF", "space");
-assert(r.shots === 1, "engine L5: F shoots");
-r = run(5, "ShiftLeft", "shift");
-assert(r.rolls === 1 && r.swaps === 0, "engine L5 shift setting: Shift rolls");
-r = run(5, "Space", "shift");
-assert(r.shots === 1 && r.rolls === 0, "engine L5 shift setting: Space shoots");
-r = run(4, "ShiftLeft", "shift");
-assert(r.swaps === 1, "engine L4 shift setting: Shift swaps");
+for (const lv of [1, 2, 3, 4, 5]) {
+  let r = run(lv, "Space", "space");
+  assert(r.rolls === 1 && r.shots === 0, `engine L${lv}: Space rolls (space setting), never fires`);
+  r = run(lv, "KeyF", "space");
+  assert(r.shots === 1 && r.rolls === 0, `engine L${lv}: F fires`);
+  r = run(lv, "ShiftLeft", "space");
+  assert(r.swaps === 1 && r.rolls === 0, `engine L${lv}: Shift swaps (space setting)`);
+  r = run(lv, "ShiftLeft", "shift");
+  assert(r.rolls === 1 && r.swaps === 0, `engine L${lv}: Shift rolls (shift setting)`);
+  r = run(lv, "Space", "shift");
+  assert(r.shots === 1 && r.rolls === 0, `engine L${lv}: Space fires (shift setting)`);
+}
+// the setting is read per key press: switching it mid-level takes effect at once
+{
+  const e = new ArenaEngine({ random: () => 0.37 });
+  e.newGame({ level: 1 });
+  e.update(1 / 30);
+  let rollKey: "space" | "shift" = "space";
+  const ctx = () => ({ rollUnlocked: e.getLevelDef().roll, rollKey });
+  assert(keyAction("Space", ctx()) === "roll", "before the switch: Space rolls");
+  rollKey = "shift";
+  assert(keyAction("Space", ctx()) === "fire" && keyAction("ShiftLeft", ctx()) === "roll", "after the switch: no restart needed");
+}
 // roll(0, 0) without move input and no roller near: a sideways dodge (perpendicular to the facing)
 {
   const e = new ArenaEngine({ random: () => 0.37 });

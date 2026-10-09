@@ -17,7 +17,8 @@ export const TUTORIAL_KEY = "bs.arenaTutorialSeen";
 
 const COPY = {
   touch: ["DRAG LEFT THUMB TO MOVE", "DRAG RIGHT SIDE TO TURN", "TAP FIRE · MATCH 3 COLOURS"],
-  desktop: ["WASD TO MOVE", "MOVE MOUSE TO TURN", "CLICK TO FIRE · MATCH 3 COLOURS"],
+  // click (or F) fires; Space is the dodge roll from L1 (its own tip after this)
+  desktop: ["WASD TO MOVE", "MOVE MOUSE TO TURN", "CLICK OR F TO FIRE · MATCH 3"],
 };
 
 interface Props {

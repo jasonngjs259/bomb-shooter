@@ -1,5 +1,5 @@
 // The par / star clock only counts REAL play: not the intro sweep, the
-// CLICK TO PLAY gate, the L1 tutorial, the L5 roll lesson, pause or the end
+// CLICK TO PLAY gate, the L1 tutorial, the L5 roller lesson, pause or the end
 // sequence. Every UI call site goes through setPlayClockPaused().
 //
 // NATIVE (the real ArenaEngine): the engine owns the par clock,

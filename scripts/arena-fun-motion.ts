@@ -123,11 +123,16 @@ const still = { creepSpeed: 0, surgeStep: 0 };
   };
   assert(headOn(0, 0) === 0, "head-on roller + no-input roll: no hit");
   assert(headOn(0, 1) === 1, "control: rolling straight back along its path still gets hit");
-  // locked before L5
-  const l4 = make(15);
-  l4.newGame({ level: 4 });
-  assert(!l4.roll(1, 0) && l4.getRoll().state === "locked", "roll locked before L5");
-  ok("roll: 3.0 w / 0.5 s, i-frames 0.04-0.42, 1.6 s cooldown, 0.2 s buffer, fire buffered to roll end, smart no-input dodge (head-on roller: no hit), locked < L5");
+  // available on every level (L1 too, boss levels too); only a custom levelDef with roll: false locks it
+  for (const lv of [1, 2, 3, 4, 6, 9]) {
+    const lx = make(15);
+    lx.newGame({ level: lv });
+    assert(lx.getLevelDef().roll && lx.roll(1, 0) && lx.getRoll().state === "rolling", `roll available on L${lv}`);
+  }
+  const locked = make(15);
+  locked.newGame({ level: 2, levelDef: { ...locked.getLevelDef(), roll: false } });
+  assert(!locked.roll(1, 0) && locked.getRoll().state === "locked", "custom levelDef roll: false still locks it");
+  ok("roll: 3.0 w / 0.5 s, i-frames 0.04-0.42, 1.6 s cooldown, 0.2 s buffer, fire buffered to roll end, smart no-input dodge (head-on roller: no hit), available from L1");
 }
 
 // ---- 3. Rotation, double ring, freeze ----------------------------------------------

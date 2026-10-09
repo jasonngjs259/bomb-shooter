@@ -5,7 +5,7 @@
 //   -> play (creep on) -> end (lose / win sequence, card at 2.6 s).
 // Locks landscape on phones (native); mobile web shows a rotate toast.
 // A lost/blocked WebGL context pauses the game (no 2D fallback for Arena).
-// Fun pass: one-time feature tips, the L5 roll lesson (creep held), the
+// Fun pass: one-time feature tips, the L5 roller lesson (creep held), the
 // stars / unlock end card, progress (bs.arena.progress: the level's bests
 // go into newGame so levelStars.newBest is right) and the equipped skin
 // (world.setSkin, guarded until the renderer has it). `startLevel` comes
@@ -152,7 +152,7 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
     if (stage === "play") bus.emit("banner", { text: "GO!", color: palette.gold, duration: 900 });
   }, [stage, bus]);
 
-  // L5 roll lesson: once, when play starts on the level that introduces roll
+  // L5 roller lesson: once, when play starts on the level that introduces rollers
   useEffect(() => {
     if (stage === "play" && wantsRollTutorial(engine)) setRollTut(true);
     if (stage !== "play") setRollTut(false);
@@ -245,7 +245,7 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
   useEffect(() => {
     if (paused || stage === "end" || glDown) releaseLock();
   }, [paused, stage, glDown, releaseLock]);
-  // Real play only: the creep runs in "play" (not during the L5 roll lesson
+  // Real play only: the creep runs in "play" (not during the L5 roller lesson
   // or the CLICK TO PLAY gate); the par / star clock is also held while
   // paused, during the intro, the L1 tutorial and the end sequence.
   const gateUp = desktopInput && live && lock === "none";
@@ -293,7 +293,7 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
           screenW={W} insetTop={insets.top} insetBottom={insets.bottom} mouse={desktopInput && !desktopHud} onPause={togglePause}
         />
       )}
-      <FeatureTips engine={engine} allowed={live && stage === "play" && !rollTut && !gateUp} top={tipTop} />
+      <FeatureTips engine={engine} desktop={desktopInput} allowed={live && stage === "play" && !rollTut && !gateUp} top={tipTop} />
       <RollTutorial
         engine={engine} desktop={desktopInput} active={rollTut && live && stage === "play"} bottom={insets.bottom + (desktopHud ? 48 : desktopInput ? 170 : 200)}
         onDone={() => setRollTut(false)}

@@ -3,7 +3,7 @@
 // x1.6 on flicks, optional soft aim assist on release), and the thumb
 // cluster: FIRE (fires on touch-down; held = fever auto-fire; shows the
 // loaded POWER icon + label), NEXT chip (swap; locked while a POWER is
-// loaded, a denied swap blips), TURN 180 and, from L5, ROLL (60pt at
+// loaded, a denied swap blips), TURN 180 and ROLL (every level; 60pt at
 // (-172, -150) from the bottom-right safe corner, fires on touch-down,
 // segmented cooldown ring; rolls along the stick, else backward).
 // Input goes straight into ArenaControls refs; the joystick visual moves
@@ -40,7 +40,7 @@ interface Props {
   currentColor: number;
   nextColor: number;
   power: PowerKind | null;
-  rollOn: boolean; // roll unlocked (L5+)
+  rollOn: boolean; // LevelDef.roll (true on every level)
   rollFill: number; // 0..1, 1 = ready
   rolling: boolean;
   rollNew: boolean; // first time the button shows: NEW badge + scale-in

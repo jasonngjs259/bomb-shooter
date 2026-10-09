@@ -1,11 +1,12 @@
-// L5 roll mini-tutorial (fun-pass spec section 2.5), once ever (introsSeen
-// "roll"), skippable, off with Settings "Tips". The screen pauses the creep
-// while it runs (onHold), per the engine notes:
-//   1. "SPACE IS NOW ROLL · CLICK OR F TO FIRE" / "TAP ROLL TO DODGE": done after 1 roll
-//   2. a scripted roller (debugLaunchRoller(undefined, 0.7), in front of the
+// L5 roller lesson (fun-pass spec section 2.5), once ever (introsSeen "roll",
+// the id the old L5 roll lesson used, so players who saw it skip this),
+// skippable, off with Settings "Tips". Roll is known from L1 (its own tip),
+// so the lesson goes straight to the roller. The screen pauses the creep
+// while it runs, per the engine notes:
+//   1. "ROLLER INCOMING!" then a scripted roller (debugLaunchRoller(undefined, 0.7), in front of the
 //      player) with a "ROLL!" prompt once it is within 3.0 w; done when it is
 //      gone (shot, dodged, hit or expired; 12 s safety)
-//   3. "SHOOT ROLLERS OR ROLL AWAY" for 2.5 s, then GO.
+//   2. "SHOOT ROLLERS OR ROLL AWAY" for 2.5 s, then GO.
 
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -20,11 +21,13 @@ export const ROLL_TUTORIAL_ID = "roll";
 const PROMPT_DIST = 3.0;
 const ROLLER_TIMEOUT_MS = 12000;
 
-// Should the L5 lesson run for this level? (pure, for the screen)
-export const wantsRollTutorial = (engine: ArenaEngine) =>
-  engine.getLevelDef().introduces.includes("roll") && getSettings().tips && !getProgress().introsSeen.includes(ROLL_TUTORIAL_ID);
+const LAUNCH_DELAY_MS = 900;
 
-type Step = "roll" | "incoming" | "dodge" | "outro";
+// Should the L5 lesson run for this level (the one that introduces rollers)?
+export const wantsRollTutorial = (engine: ArenaEngine) =>
+  engine.getLevelDef().introduces.includes("roller") && getSettings().tips && !getProgress().introsSeen.includes(ROLL_TUTORIAL_ID);
+
+type Step = "incoming" | "dodge" | "outro";
 
 interface Props {
   engine: ArenaEngine;
@@ -36,7 +39,7 @@ interface Props {
 
 export function RollTutorial({ engine, desktop, active, bottom, onDone }: Props) {
   const settings = useSettings();
-  const [step, setStep] = useState<Step>("roll");
+  const [step, setStep] = useState<Step>("incoming");
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
   const finished = useRef(false);
@@ -52,25 +55,13 @@ export function RollTutorial({ engine, desktop, active, bottom, onDone }: Props)
   useEffect(() => {
     if (!active) return;
     finished.current = false;
-    setStep("roll");
-  }, [active]);
-
-  // step 1 -> 2: first roll, then launch the scripted roller
-  useEffect(() => {
-    if (!active || step !== "roll") return;
-    let t: ReturnType<typeof setTimeout> | null = null;
-    const off = engine.on("rollStart", () => {
-      t = setTimeout(() => {
-        const id = engine.debugLaunchRoller(undefined, 0.7);
-        if (id < 0) setStep("outro");
-        else setStep("incoming");
-      }, 700);
-    });
-    return () => {
-      off();
-      if (t) clearTimeout(t);
-    };
-  }, [active, step, engine]);
+    setStep("incoming");
+    // launch the scripted slow roller in front of the player
+    const t = setTimeout(() => {
+      if (engine.debugLaunchRoller(undefined, 0.7) < 0) setStep("outro");
+    }, LAUNCH_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [active, engine]);
 
   // step 2: watch the roller; "ROLL!" inside 3.0 w; next when it is gone
   useEffect(() => {
@@ -101,13 +92,7 @@ export function RollTutorial({ engine, desktop, active, bottom, onDone }: Props)
   if (!active) return null;
   const rollWord = settings.rollKey === "shift" ? "SHIFT" : "SPACE";
   const copy =
-    step === "roll"
-      ? desktop
-        ? settings.rollKey === "shift"
-          ? "PRESS SHIFT TO ROLL · DODGE"
-          : "SPACE IS NOW ROLL · CLICK OR F TO FIRE"
-        : "TAP ROLL TO DODGE"
-      : step === "incoming"
+    step === "incoming"
         ? "ROLLER INCOMING!"
         : step === "dodge"
           ? desktop ? `ROLL! (${rollWord})` : "ROLL!"

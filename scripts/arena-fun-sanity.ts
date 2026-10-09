@@ -10,10 +10,10 @@ const R = 0, Y = 1, B = 2; // colour indices
 // ---- 1. Level table + unlock schedule -----------------------------------------
 {
   const want: [number, string][] = [
-    [1, "pickups,rainbow,freeze"],
-    [2, "pickups,rainbow,freeze,armored,fever"],
-    [3, "pickups,rainbow,freeze,mega,armored,fever,boss"],
-    [4, "pickups,rainbow,freeze,mega,lightning,armored,fever,ticking,rotation"],
+    [1, "pickups,rainbow,freeze,roll"],
+    [2, "pickups,rainbow,freeze,armored,fever,roll"],
+    [3, "pickups,rainbow,freeze,mega,armored,fever,boss,roll"],
+    [4, "pickups,rainbow,freeze,mega,lightning,armored,fever,ticking,rotation,roll"],
     [5, "pickups,rainbow,freeze,mega,lightning,armored,fever,ticking,roller,roll"],
     [6, "pickups,rainbow,freeze,mega,lightning,armored,fever,boss,ticking,rotation,roller,roll"],
     [7, "pickups,rainbow,freeze,mega,lightning,armored,fever,ticking,roller,roll,doubleRing"],
@@ -21,7 +21,7 @@ const R = 0, Y = 1, B = 2; // colour indices
   ];
   for (const [lv, f] of want) assert(levelDef(ARENA_CONFIG, lv).features.join() === f, `L${lv} features ${levelDef(ARENA_CONFIG, lv).features.join()}`);
   const intro = [1, 2, 3, 4, 5, 7].map((lv) => levelDef(ARENA_CONFIG, lv).introduces.join("+"));
-  assert(intro.join(" | ") === "pickups+rainbow+freeze | armored+fever | mega+boss | lightning+ticking+rotation | roller+roll | doubleRing", `introduces ${intro.join(" | ")}`);
+  assert(intro.join(" | ") === "pickups+rainbow+freeze+roll | armored+fever | mega+boss | lightning+ticking+rotation | roller | doubleRing", `introduces ${intro.join(" | ")}`);
   const l1 = levelDef(ARENA_CONFIG, 1), l2 = levelDef(ARENA_CONFIG, 2);
   assert(l1.bombs === 60 && Math.abs(l1.creepBase - 0.035 * 0.85) < 1e-12 && l1.par === 60, "L1 keeps today's numbers (60 bombs, 0.02975 w/s)");
   assert(l2.bombs === 75 && Math.abs(l2.creepBase - 0.035 * 0.92) < 1e-12 && l2.armored === 5 && l2.fever, "L2 75 / 0.0322, armored x5, fever");
