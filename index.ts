@@ -1,3 +1,5 @@
+// Must stay the first import: native-runtime shims (see src/polyfills.ts).
+import "./src/polyfills";
 import { registerRootComponent } from "expo";
 import App from "./App";
 

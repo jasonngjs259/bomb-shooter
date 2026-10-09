@@ -29,6 +29,7 @@ Engine sanity check (headless): `npx tsx scripts/engine-sanity.ts`.
 Renderer fallback + layout check (headless): `npx tsx scripts/renderer-fallback.ts`.
 Arena checks (headless): `npx tsx scripts/arena-sanity.ts`, `npx tsx scripts/arena-controls.ts`.
 Audio logic check (headless, fake players): `npx tsx --tsconfig scripts/smoke/tsconfig.json scripts/audio-sanity.ts`.
+Native startup guard: `node scripts/check-native-bundle.mjs` exports an unminified Android bundle, fails on Node-only code (three's `build/three.cjs`, `process.emitWarning()`, module-scope Node / DOM APIs) and load-tests the app's module graph in a `process`-less vm. `metro.config.js` pins `three` to `build/three.module.js` on every platform; after changing it, start Metro with `npx expo start -c`.
 
 ## Controls
 
