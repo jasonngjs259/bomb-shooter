@@ -32,6 +32,7 @@ import { astronautBytes } from "../../render/arena/character/astronautAsset";
 import { BoardLayout } from "../../render/layout";
 import { rendererStatus, useRendererStatus } from "../../render/status";
 import { FxTextOverlay } from "../../render/three/FxTextOverlay";
+import { setFullscreenLandscape } from "../fullscreen";
 import { lockLandscape } from "../orientation";
 import { PauseMenu } from "../PauseMenu";
 import { ScreenFlash } from "../ScreenFlash";
@@ -125,6 +126,12 @@ export function ArenaScreen({ onExit, onClassic, startLevel = 1 }: { onExit: () 
       audio.music.setBoss(0);
     };
   }, [engine, bus]);
+
+  // mobile web full screen (pause menu row) also locks landscape while Arena is up
+  useEffect(() => {
+    setFullscreenLandscape(true);
+    return () => setFullscreenLandscape(false);
+  }, []);
 
   // mount: landscape, new game, intro sweep with the creep paused
   useEffect(() => {

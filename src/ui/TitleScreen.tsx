@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Platform, StyleSheet, Text, View } from "react-native";
 import { IconButton } from "./Button";
+import { FullscreenButton } from "./FullscreenButton";
 import { GameMode, ModeButtons } from "./ModeButtons";
 import { fonts, palette } from "./theme";
 import { titleLayout } from "./titleLayout";
@@ -121,6 +122,7 @@ export function TitleScreen({
       </Animated.View>
 
       <View style={[styles.topRight, { top: topInset + 8 }]}>
+        <FullscreenButton />
         <IconButton label="Settings" onPress={onSettings}>
           <GearGlyph />
         </IconButton>
@@ -163,7 +165,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   playWrap: { position: "absolute", left: 16, right: 16, alignItems: "center", gap: 14 },
-  topRight: { position: "absolute", right: 16 },
+  // mobile web: FULL SCREEN (left) + Settings; 12pt apart, top-right, clear of the logo
+  topRight: { position: "absolute", right: 16, flexDirection: "row", gap: 12 },
   gear: { width: 22, height: 22, alignItems: "center", justifyContent: "center" },
   gearTooth: { position: "absolute", width: 4, height: 22, borderRadius: 1, backgroundColor: palette.textPrimary },
   gearRing: {

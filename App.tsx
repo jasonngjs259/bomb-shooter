@@ -15,6 +15,7 @@ import { astronautBytes } from "./src/render/arena/character/astronautAsset";
 import { ArenaScreen } from "./src/ui/arena/ArenaScreen";
 import { GameScreen } from "./src/ui/GameScreen";
 import { initProgress } from "./src/storage/progressStore";
+import { FullscreenHint } from "./src/ui/FullscreenButton";
 import { initSettings } from "./src/ui/settings";
 import { palette } from "./src/ui/theme";
 import { installWebScrollbarStyle } from "./src/ui/webSafe";
@@ -79,6 +80,7 @@ export default function App() {
             <ActivityIndicator size="large" color={palette.cyan} />
           </View>
         )}
+        {ready && <FullscreenHint />}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

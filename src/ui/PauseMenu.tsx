@@ -6,6 +6,7 @@ import { ReactNode } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { uiSound } from "../audio";
 import { AudioSettings } from "./AudioSettings";
+import { useFullscreen } from "./FullscreenButton";
 import { Button } from "./Button";
 import { reduceMotion, updateSettings, useSettings } from "./settings";
 import { fonts, palette, spacing } from "./theme";
@@ -40,6 +41,7 @@ export function Toggle({ label, value, onChange }: { label: string; value: boole
 
 export function PauseMenu({ title, onResume, onRestart, onMenu, children }: Props) {
   const s = useSettings();
+  const fs = useFullscreen(); // mobile web only (Classic, Arena and title Settings)
   return (
     <View style={[StyleSheet.absoluteFill, styles.overlay]}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} bounces={false}>
@@ -49,6 +51,7 @@ export function PauseMenu({ title, onResume, onRestart, onMenu, children }: Prop
           {onRestart && <Button label="Restart" size="md" variant="secondary" onPress={onRestart} />}
           {onMenu && <Button label="Menu" size="md" variant="secondary" onPress={onMenu} />}
           <View style={styles.toggles}>
+            {fs.offer && <Toggle label="FULL SCREEN" value={fs.active} onChange={() => fs.toggle()} />}
             <AudioSettings />
             {Platform.OS !== "web" && (
               <Toggle label="HAPTICS" value={s.haptics} onChange={(v) => updateSettings({ haptics: v })} />

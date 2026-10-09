@@ -19,6 +19,10 @@ import {
 } from "../src/ui/arena/arenaHudMetrics";
 import { TIP_GAP_MS, TIP_SEEN_MS, TipQueue, tipCountsAsSeen } from "../src/ui/arena/tipQueue";
 import { isCompactTitle, MODE_STACK, titleLayout } from "../src/ui/titleLayout";
+import {
+  enterFullscreen, exitFullscreen, fullscreenEnv, fullscreenMode, FsWindow, onFullscreenChange, prefersFullscreen, setFullscreenLandscape,
+  shouldOfferFullscreen,
+} from "../src/ui/fullscreen";
 
 let checks = 0;
 const assert = (cond: unknown, msg: string) => {
@@ -45,6 +49,14 @@ console.log("- title layout");
     assert(tl.logoY - tl.fontSize * 0.6 >= 0 && tl.logoY - tl.slotSize / 2 >= 0, `${tag}: logo + bomb on screen`);
     assert(tl.pileTop >= tl.tagBottom - 1, `${tag}: pile under the tagline`);
     assert(tl.pileGroundY <= tl.playTop, `${tag}: pile above the buttons`);
+    // top-right FULL SCREEN + Settings (44pt each, 12 apart, right 16, top 8 + inset 0..47):
+    // clear of the logo either vertically or horizontally ("MB" <= 2.1 em wide)
+    {
+      const btn = { x0: w - 16 - 44 - 12 - 44 - 4, y1: 8 + 47 + 44 + 4 };
+      const logoTop = tl.logoY - Math.max(tl.fontSize * 0.6, tl.slotSize / 2);
+      const logoRight = tl.slotX + tl.slotSize / 2 + tl.fontSize * (0.04 + 2.1);
+      assert(logoTop >= btn.y1 - 47 || logoRight <= btn.x0, `${tag}: full-screen + settings buttons clear of the logo`);
+    }
     if (compact) {
       assert(tl.stackH === MODE_STACK.compact, `${tag}: compact stack`);
       assert(2 * 250 + 16 <= w - 32, `${tag}: ARENA | CLASSIC row fits`);
@@ -225,4 +237,110 @@ console.log("- play clock: native (real ArenaEngine par clock)");
   assert(correctStars(w, ev) === ev, "no UI correction on native levelStars (no double subtraction)");
 }
 
-console.log(`arena-ui-logic: ${checks} checks passed`);
+console.log("- mobile-web full screen (fake window / document)");
+async function fullscreenChecks() {
+  interface Fake {
+    touch?: boolean; coarse?: boolean; standalone?: "nav" | "media-standalone" | "media-fullscreen" | null; api?: "std" | "webkit" | null;
+    ios?: boolean; landscape?: boolean; reject?: boolean;
+  }
+  const make = (o: Fake) => {
+    const calls: string[] = [];
+    const listeners = new Map<string, Set<() => void>>();
+    const store = new Map<string, string>();
+    const doc: Record<string, unknown> = {
+      fullscreenElement: null,
+      documentElement: {} as Record<string, unknown>,
+      addEventListener: (t: string, cb: () => void) => (listeners.get(t) ?? listeners.set(t, new Set()).get(t)!).add(cb),
+      removeEventListener: (t: string, cb: () => void) => listeners.get(t)?.delete(cb),
+      exitFullscreen: () => {
+        calls.push("exit");
+        doc.fullscreenElement = null;
+        return Promise.resolve();
+      },
+    };
+    const el = doc.documentElement as Record<string, unknown>;
+    const enter = (name: string) => (opts?: { navigationUI?: string }) => {
+      calls.push(`${name}:${opts?.navigationUI ?? ""}`);
+      if (o.reject) return Promise.reject(new Error("denied"));
+      doc.fullscreenElement = el;
+      return Promise.resolve();
+    };
+    if (o.api === "std") el.requestFullscreen = enter("request");
+    if (o.api === "webkit") el.webkitRequestFullscreen = enter("webkit");
+    const w: FsWindow = {
+      document: doc as FsWindow["document"],
+      navigator: {
+        maxTouchPoints: o.touch ? 5 : 0, standalone: o.standalone === "nav" ? true : undefined,
+        userAgent: o.ios ? "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari" : "Mozilla/5.0 (Linux; Android 14) Chrome",
+      },
+      matchMedia: (q: string) => ({
+        matches:
+          (q === "(pointer: coarse)" && !!o.coarse) ||
+          (q === "(display-mode: standalone)" && o.standalone === "media-standalone") ||
+          (q === "(display-mode: fullscreen)" && o.standalone === "media-fullscreen"),
+      }),
+      screen: { orientation: { lock: (x: string) => (calls.push(`lock:${x}`), Promise.reject(new Error("no lock"))) } },
+      innerWidth: o.landscape ? 844 : 390,
+      innerHeight: o.landscape ? 390 : 844,
+      localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v) },
+    };
+    return { w, calls, doc, fire: (t: string) => listeners.get(t)?.forEach((cb) => cb()) };
+  };
+  // predicate: web x touch x standalone x already full screen x API
+  assert(!shouldOfferFullscreen(fullscreenEnv(make({ touch: true, api: "std" }).w, false)), "native: never");
+  assert(!shouldOfferFullscreen(fullscreenEnv(undefined, true)), "no window: never");
+  assert(!shouldOfferFullscreen(fullscreenEnv(make({ api: "std" }).w, true)), "desktop mouse (no touch, fine pointer): hidden");
+  assert(shouldOfferFullscreen(fullscreenEnv(make({ touch: true, api: "std" }).w, true)), "touch phone web: shown");
+  assert(shouldOfferFullscreen(fullscreenEnv(make({ coarse: true, api: "std" }).w, true)), "coarse pointer: shown");
+  for (const st of ["nav", "media-standalone", "media-fullscreen"] as const) {
+    assert(!shouldOfferFullscreen(fullscreenEnv(make({ touch: true, api: "std", standalone: st }).w, true)), `standalone (${st}): hidden`);
+  }
+  // modes
+  assert(fullscreenMode(fullscreenEnv(make({ touch: true, api: "std" }).w, true)) === "api", "API -> api mode");
+  assert(fullscreenMode(fullscreenEnv(make({ touch: true, api: "webkit" }).w, true)) === "api", "webkit API -> api mode");
+  const iosEnv = fullscreenEnv(make({ touch: true, api: null, ios: true }).w, true);
+  assert(fullscreenMode(iosEnv) === "ios-hint" && iosEnv.ios, "iPhone Safari (no API) -> Add to Home Screen hint");
+  assert(fullscreenMode(fullscreenEnv(make({ api: null }).w, true)) === "none", "desktop: none");
+  // enter (in the tap), landscape lock attempt ignored on failure, exit, change events
+  {
+    const f = make({ touch: true, api: "std" });
+    setFullscreenLandscape(true);
+    const r = await enterFullscreen(f.w);
+    assert(r === "entered" && f.calls[0] === "request:hide", "requestFullscreen({ navigationUI: hide })");
+    assert(f.calls.includes("lock:landscape"), "Arena: landscape lock attempted (failure ignored)");
+    assert(fullscreenEnv(f.w, true).active && shouldOfferFullscreen(fullscreenEnv(f.w, true)), "full screen: still offered (exit icon)");
+    assert(prefersFullscreen(f.w), "choice remembered");
+    let changes = 0;
+    const off = onFullscreenChange(f.w, () => changes++);
+    f.doc.fullscreenElement = null; // user swipes out
+    f.fire("fullscreenchange");
+    f.fire("webkitfullscreenchange");
+    assert(changes === 2 && !fullscreenEnv(f.w, true).active, "fullscreenchange / webkitfullscreenchange tracked");
+    off();
+    f.fire("fullscreenchange");
+    assert(changes === 2, "unsubscribed");
+    await enterFullscreen(f.w);
+    await exitFullscreen(f.w);
+    assert(f.calls.includes("exit") && !fullscreenEnv(f.w, true).active && !prefersFullscreen(f.w), "exitFullscreen + choice cleared");
+    setFullscreenLandscape(false);
+  }
+  {
+    const f = make({ touch: true, api: "webkit", landscape: false });
+    assert((await enterFullscreen(f.w)) === "entered" && f.calls[0] === "webkit:hide" && !f.calls.includes("lock:landscape"), "webkit fallback; portrait title: no lock");
+    const g = make({ touch: true, api: "std", landscape: true });
+    await enterFullscreen(g.w);
+    assert(g.calls.includes("lock:landscape"), "landscape device: lock attempted");
+    const d = make({ touch: true, api: "std", reject: true });
+    assert((await enterFullscreen(d.w)) === "failed" && !prefersFullscreen(d.w), "denied request: failed, not remembered");
+    const i = make({ touch: true, api: null, ios: true });
+    assert((await enterFullscreen(i.w)) === "hint" && i.calls.length === 0, "iOS: no API call, hint");
+  }
+}
+
+fullscreenChecks().then(
+  () => console.log(`arena-ui-logic: ${checks} checks passed`),
+  (e) => {
+    console.error(e);
+    process.exit(1);
+  }
+);

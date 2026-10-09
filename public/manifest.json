@@ -1,0 +1,17 @@
+{
+  "name": "Bomb Shooter",
+  "short_name": "Bomb Shooter",
+  "description": "Match 3, chain the blast, don't cross the line. Arena 360 and Classic.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#0B0420",
+  "theme_color": "#0B0420",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
