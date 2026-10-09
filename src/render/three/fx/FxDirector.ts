@@ -72,6 +72,8 @@ export class FxDirector {
   private readonly ember = color(HEX.sparkHalo);
   private readonly cyan = color(HEX.cyan);
   private readonly tmpC = new Color();
+  // pop flash colour per bomb colour: glow mixed 35% towards highlight
+  private readonly flashColors = bombGlow.map((g, i) => g.clone().lerp(colorAt(bombHighlight, i), 0.35));
   private readonly offs: (() => void)[] = [];
 
   constructor(
@@ -214,7 +216,9 @@ export class FxDirector {
   explode(x: number, y: number, z: number, c: number, parts: number, debris: number, size = 1) {
     const hi = colorAt(bombHighlight, c);
     const gc = colorAt(bombGlow, c);
-    this.anim(false, x, y, z + 22, 0.12, 0, 130 * size, hi, 1);
+    // flash tinted with the bomb's own glow colour at lower alpha (a full
+    // highlight-colour flash read as a big white disc)
+    this.anim(false, x, y, z + 22, 0.12, 0, 95 * size, colorAt(this.flashColors, c), 0.55);
     this.anim(true, x, y, z + 20, 0.32, 20 * size, 140 * size, gc, 0.9);
     for (let i = 0; i < parts; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -353,7 +357,9 @@ export class FxDirector {
       if (!p.preflash) continue;
       const pre = clamp01((this.t - p.start) / 0.05);
       d.x = p.x; d.y = p.y; d.z = p.z; d.rotX = d.rotY = d.rotZ = 0; d.squash = 0;
-      d.scale = 1 + 0.25 * easeOutQuad(pre); d.tint = pre; d.colorIndex = p.c; d.glow = 0.35 + pre;
+      // pre-flash: a brief swell and glow in the bomb's colour, only lightly
+      // whitened (full white tint read as big white discs)
+      d.scale = 1 + 0.15 * easeOutQuad(pre); d.tint = 0.3 * pre; d.colorIndex = p.c; d.glow = 0.35 + 0.65 * pre;
       d.halo = 1; d.spark = 1; d.shadow = true;
       batch.add();
     }

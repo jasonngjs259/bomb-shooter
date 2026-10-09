@@ -16,10 +16,11 @@
  *   getTiles()            live tiles {id,col,row,x,y,colorIndex,alpha,dropOffset,state}
  *   getCeilingRows()      solid ceiling slabs as y-extents
  *   getShooter()          launcher centre + aim angle
- *   getBomb()             current bomb (loaded or in flight)
+ *   getBomb()             current bomb (loaded in the muzzle, or in flight)
+ *   getMuzzle()           launch point: MUZZLE_OFFSET from the launcher along the aim
  *   getNextBomb()         preview slot position + colour
  *   getAimAngle()         degrees, 90 = up, clamped to [8, 172]
- *   getAimPath()          predicted polyline with wall bounces + target cell
+ *   getAimPath()          predicted polyline (from the muzzle) with wall bounces + target cell
  *   getDangerLevel()      0..1, how close the lowest tile is to the bottom
  *   getShotsUntilCeiling(), getScore(), getCombo(), getPhase(), getTime()
  *   getRevision()         increments whenever anything visible changed
@@ -87,8 +88,8 @@ export class GameEngine {
     this.metrics = boardMetrics(this.config, K.SHOOTER_AREA_HEIGHT);
     const height = this.metrics.height;
     this.shooter = { x: this.metrics.width / 2, y: height - K.SHOOTER_OFFSET_FROM_BOTTOM };
-    this.nextSlot = { x: this.shooter.x - K.NEXT_BOMB_OFFSET_X, y: this.shooter.y };
-    this.bomb = { ...this.shooter, dx: 0, dy: -1, colorIndex: 0, visible: true, inFlight: false };
+    this.nextSlot = { x: this.shooter.x - K.NEXT_BOMB_OFFSET_X, y: this.shooter.y + K.NEXT_BOMB_OFFSET_Y };
+    this.bomb = { ...this.getMuzzle(), dx: 0, dy: -1, colorIndex: 0, visible: true, inFlight: false };
     // Build a board so the title screen has a backdrop
     this.grid = createGrid(this.config);
     this.setupBoard();
@@ -117,6 +118,12 @@ export class GameEngine {
   getBomb(): BombState {
     const { x, y, colorIndex, visible, inFlight } = this.bomb;
     return { x, y, colorIndex, visible, inFlight };
+  }
+  // Where the loaded bomb sits and shots launch: on the aim line, MUZZLE_OFFSET
+  // from the launcher centre (the turret's muzzle).
+  getMuzzle(): Vec2 {
+    const d = direction(this.angle);
+    return { x: this.shooter.x + d.dx * K.MUZZLE_OFFSET, y: this.shooter.y + d.dy * K.MUZZLE_OFFSET };
   }
   getNextBomb(): NextBombState {
     return { x: this.nextSlot.x, y: this.nextSlot.y, colorIndex: this.nextColor };
@@ -151,7 +158,7 @@ export class GameEngine {
   getAimPath(): AimPath {
     const key = `${this.angle}|${this.gridRevision}`;
     if (this.aimCache?.key !== key) {
-      this.aimCache = { key, path: traceAimPath(this.world(), this.shooter, this.angle) };
+      this.aimCache = { key, path: traceAimPath(this.world(), this.getMuzzle(), this.angle) };
     }
     return this.aimCache.path;
   }
@@ -179,6 +186,7 @@ export class GameEngine {
     const a = clamp(deg, K.AIM_MIN_ANGLE, K.AIM_MAX_ANGLE);
     if (a === this.angle) return;
     this.angle = a;
+    if (!this.bomb.inFlight) Object.assign(this.bomb, this.getMuzzle()); // loaded bomb turns with the barrel
     this.touch();
   }
 
@@ -190,7 +198,7 @@ export class GameEngine {
   fire(): boolean {
     if (this.phase !== "ready") return false;
     const d = direction(this.angle);
-    Object.assign(this.bomb, { x: this.shooter.x, y: this.shooter.y, dx: d.dx, dy: d.dy, inFlight: true, visible: true });
+    Object.assign(this.bomb, { ...this.getMuzzle(), dx: d.dx, dy: d.dy, inFlight: true, visible: true });
     this.events.emit("shoot", { x: this.bomb.x, y: this.bomb.y, angle: this.angle, colorIndex: this.bomb.colorIndex });
     this.setPhase("shooting");
     return true;
@@ -367,7 +375,7 @@ export class GameEngine {
     const colors = findColors(this.grid);
     let current = this.nextColor;
     if (colors.length > 0 && !colors.includes(current)) current = pickExistingColor(this.grid, this.random);
-    Object.assign(this.bomb, { x: this.shooter.x, y: this.shooter.y, colorIndex: current, visible: true, inFlight: false });
+    Object.assign(this.bomb, { ...this.getMuzzle(), colorIndex: current, visible: true, inFlight: false });
     this.nextColor = pickExistingColor(this.grid, this.random);
   }
 

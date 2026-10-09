@@ -80,7 +80,7 @@ export class GameWorld {
     this.fx = new FxDirector(this.particles, this.debris, this.glow, this.rings, clock, bus, (out) => this.cannon.muzzleWorld(out));
     this.fx.attach(engine);
     this.title = new TitleScene(this.fx, bus);
-    this.cannon.setNextOffset(engine.getNextBomb().x - engine.getShooter().x);
+    this.cannon.setNextOffset(engine.getNextBomb().x - engine.getShooter().x, engine.getNextBomb().y - engine.getShooter().y);
 
     // Lights (spec values x PI for three's physically based units)
     const centre = new Vector3(m.width / 2, -m.height / 2, 0);
@@ -99,7 +99,7 @@ export class GameWorld {
       this.glow.mesh, this.rings.mesh, this.shadows.mesh, this.particles.points, this.debris.mesh
     );
     this.offs.push(
-      engine.on("shoot", () => this.cannon.onShoot()),
+      engine.on("shoot", ({ angle }) => this.cannon.onShoot(angle)),
       engine.on("swap", () => this.cannon.onSwap()),
       engine.on("phaseChanged", ({ phase, previous }) => {
         if (phase === "ready" && !PLAYING.has(previous)) this.introT0 = this.realT;

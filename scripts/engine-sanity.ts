@@ -1,7 +1,7 @@
 // Headless sanity check for the GameEngine: `npx tsx scripts/engine-sanity.ts`
 // Plays seeded games with random aim and asserts the core loop behaves.
 
-import { BOARD_CONFIG } from "../src/game/constants";
+import { BOARD_CONFIG, MUZZLE_OFFSET } from "../src/game/constants";
 import { GameEngine } from "../src/game/engine";
 import { getBaseScore } from "../src/game/grid";
 
@@ -83,6 +83,49 @@ e.aimAt(e.getShooter().x + 100, e.getShooter().y + 50); // below-right
 assert(e.getAimAngle() === 8, "clamped right");
 e.aimAt(e.getShooter().x, 0);
 assert(e.getAimAngle() === 90, "straight up");
+
+// Launch point = muzzle: the loaded bomb sits there, the aim path starts
+// there, the shot leaves from exactly there (no jump), and it lands on the
+// predicted ghost cell - including aims right next to both walls.
+{
+  let checked = 0;
+  for (const seed of [3, 7, 11, 19, 23, 29]) {
+    const g = new GameEngine({ random: mulberry32(seed) });
+    g.newGame();
+    for (const angle of [8, 12, 35, 60, 90, 118, 150, 168, 172]) {
+      if (g.getPhase() !== "ready") break;
+      g.setAngle(angle);
+      const s = g.getShooter();
+      const mz = g.getMuzzle();
+      assert(Math.abs(Math.hypot(mz.x - s.x, mz.y - s.y) - MUZZLE_OFFSET) < 1e-9, "muzzle is MUZZLE_OFFSET from the launcher");
+      const ang = (Math.atan2(s.y - mz.y, mz.x - s.x) * 180) / Math.PI;
+      assert(Math.abs(ang - angle) < 1e-9, "muzzle lies on the aim line");
+      const loaded = g.getBomb();
+      assert(loaded.x === mz.x && loaded.y === mz.y && !loaded.inFlight, "loaded bomb sits in the muzzle");
+      const path = g.getAimPath();
+      assert(path.points[0].x === mz.x && path.points[0].y === mz.y, "aim path starts at the muzzle");
+      let snapped: { col: number; row: number } | null = null;
+      let shotAt: { x: number; y: number } | null = null;
+      const offs = [g.on("snap", (p) => (snapped = { col: p.col, row: p.row })), g.on("shoot", (p) => (shotAt = { x: p.x, y: p.y }))];
+      assert(g.fire(), "fire");
+      const fb = g.getBomb();
+      assert(fb.inFlight && fb.x === mz.x && fb.y === mz.y, "shot starts exactly at the loaded position");
+      const sp = shotAt as { x: number; y: number } | null;
+      assert(sp !== null && sp.x === mz.x && sp.y === mz.y, "shoot event at the muzzle");
+      for (let i = 0; i < 600 && g.getPhase() === "shooting"; i++) g.update(1 / 60);
+      offs.forEach((off) => off());
+      const sn = snapped as { col: number; row: number } | null;
+      if (path.target && sn) {
+        assert(sn.col === path.target.col && sn.row === path.target.row, `seed ${seed} angle ${angle}: lands on the ghost`);
+        checked++;
+      }
+      for (let i = 0; i < 600 && g.getPhase() === "resolving"; i++) g.update(1 / 60);
+    }
+  }
+  assert(checked >= 20, `ghost landings checked (${checked})`);
+  console.log(`launch point: OK, ${checked} shots landed on the ghost (aims 8..172 deg incl. near walls)`);
+}
+
 console.log("engine sanity: OK");
 
 // Win state: a one-colour board clears with a single shot

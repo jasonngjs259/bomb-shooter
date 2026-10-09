@@ -9,12 +9,13 @@ import {
 import { AimPath, RenderTile, Vec2 } from "../../../game/types";
 import { SpriteBatch } from "../fx/SpriteBatch";
 import { bombGlow, color, colorAt, HEX } from "../palette";
+import { AIM_SKIP } from "./Cannon";
 import { lerp } from "./easing";
 
 const MAX_LEN = 900;
 const MAX_BOUNCES = 2;
 const SPACING = 14;
-const SKIP = 30;
+const SKIP = AIM_SKIP; // dots start just past the bomb loaded in the muzzle
 
 const dashedRing = (r0: number, r1: number, dashes: number, seg = 4) => {
   const pos: number[] = [];

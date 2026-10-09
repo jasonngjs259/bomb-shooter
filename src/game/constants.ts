@@ -37,8 +37,13 @@ export const BOARD_CONFIG: BoardConfig = {
 export const SHOOTER_AREA_HEIGHT = 96;
 // Launcher centre, measured up from the bottom of the board.
 export const SHOOTER_OFFSET_FROM_BOTTOM = 46;
-// Next-bomb preview sits this far left of the launcher.
-export const NEXT_BOMB_OFFSET_X = 2.75 * BOARD_CONFIG.tileWidth;
+// The loaded bomb sits in the launcher's muzzle, this far from the launcher
+// centre along the aim; shots launch from there and the aim path starts there.
+export const MUZZLE_OFFSET = 52;
+// Next-bomb preview: a socket on the launcher's left side, this far left of
+// and below the launcher centre (renderers draw it here; taps hit-test here).
+export const NEXT_BOMB_OFFSET_X = 1.8 * BOARD_CONFIG.tileWidth;
+export const NEXT_BOMB_OFFSET_Y = 18;
 
 // Aim limits (degrees, 90 = straight up), as in the original game.
 export const AIM_MIN_ANGLE = 8;
