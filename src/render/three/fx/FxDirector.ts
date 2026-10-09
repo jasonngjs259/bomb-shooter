@@ -219,7 +219,9 @@ export class FxDirector {
     // flash tinted with the bomb's own glow colour at lower alpha (a full
     // highlight-colour flash read as a big white disc)
     this.anim(false, x, y, z + 22, 0.12, 0, 95 * size, colorAt(this.flashColors, c), 0.55);
-    this.anim(true, x, y, z + 20, 0.32, 20 * size, 140 * size, gc, 0.9);
+    // shockwave ring: additive, so keep the peak low - overlapping rings
+    // from a chain used to bleach neighbouring bombs to white
+    this.anim(true, x, y, z + 20, 0.32, 20 * size, 115 * size, gc, 0.45);
     for (let i = 0; i < parts; i++) {
       const a = Math.random() * Math.PI * 2;
       const v = rand(180, 420) * Math.sqrt(size);

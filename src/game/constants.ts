@@ -42,8 +42,9 @@ export const SHOOTER_OFFSET_FROM_BOTTOM = 46;
 export const MUZZLE_OFFSET = 52;
 // Next-bomb preview: a socket on the launcher's left side, this far left of
 // and below the launcher centre (renderers draw it here; taps hit-test here).
-export const NEXT_BOMB_OFFSET_X = 1.8 * BOARD_CONFIG.tileWidth;
-export const NEXT_BOMB_OFFSET_Y = 18;
+// (placed so the loaded bomb at the 172 deg aim limit keeps a clear gap)
+export const NEXT_BOMB_OFFSET_X = 2.3 * BOARD_CONFIG.tileWidth;
+export const NEXT_BOMB_OFFSET_Y = 20;
 
 // Aim limits (degrees, 90 = straight up), as in the original game.
 export const AIM_MIN_ANGLE = 8;

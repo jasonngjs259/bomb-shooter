@@ -9,11 +9,18 @@ import { Animated, Easing, Platform, StyleSheet } from "react-native";
 import { FxBusEvents, getFxBus } from "../../fx/bus";
 import { BoardLayout } from "../layout";
 import { fonts, palette } from "../../ui/theme";
-import { ownLayer, textGlow } from "../../ui/webSafe";
+import { IS_WEB, ownLayer } from "../../ui/webSafe";
 
 type FloatText = FxBusEvents["floatText"] & { id: number };
 
 const native = Platform.OS !== "web";
+// Dark drop outline so gold / cyan labels read over bright pop rings
+// (blur-free on web: no per-frame path rasterising, see webSafe.ts).
+const OUTLINE = {
+  textShadowColor: "rgba(11, 4, 32, 0.95)",
+  textShadowRadius: IS_WEB ? 0 : 4,
+  textShadowOffset: { width: 0, height: 2 },
+};
 const MAX_ITEMS = 12;
 
 function comboColor(combo: number) {
@@ -58,7 +65,7 @@ function FloatLabel({ item, layout, onDone }: { item: FloatText; layout: BoardLa
       style={[
         isCombo ? styles.combo : styles.score,
         {
-          left, top, width, fontSize, color: tint, ...textGlow(tint, isCombo ? 16 : 10),
+          left, top, width, fontSize, color: tint, ...OUTLINE,
           opacity, transform: [...ownLayer, { translateY: rise }, { scale }],
         },
       ]}

@@ -89,7 +89,8 @@ function BasicBoard({ engine, layout, showAimGuide }: BoardRendererProps) {
 
       {/* Next bomb preview (tap to swap) */}
       <Bubble x={next.x * s} y={next.y * s} radius={r * 0.8} color={colorOf(next.colorIndex)} />
-      <Text style={[styles.label, { left: next.x * s - 40, top: (next.y + m.radius) * s + 2, fontSize: Math.max(9, 11 * s) }]}>
+      {/* label above the preview: below it is clipped by the board's bottom edge */}
+      <Text style={[styles.label, { left: next.x * s - 40, top: (next.y - m.radius * 0.8) * s - Math.max(9, 11 * s) - 6, fontSize: Math.max(9, 11 * s) }]}>
         NEXT
       </Text>
 

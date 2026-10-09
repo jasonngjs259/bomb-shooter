@@ -17,17 +17,17 @@
 // 0.35, no shooter point light: that washed them out).
 
 import {
-  Color, CylinderGeometry, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, SphereGeometry,
+  Color, CylinderGeometry, DoubleSide, Group, Material, Mesh, MeshBasicMaterial, MeshStandardMaterial, SphereGeometry,
   TorusGeometry, Vector3,
 } from "three";
-import { MUZZLE_OFFSET } from "../../../game/constants";
+import { AIM_MAX_ANGLE, AIM_MIN_ANGLE, MUZZLE_OFFSET } from "../../../game/constants";
 import { BombState, NextBombState, ShooterState } from "../../../game/types";
 import { BombBatch } from "./BombBatch";
 import { bombGlow, colorAt, HEX } from "../palette";
 import { DEG, clamp01, easeInOutCubic, easeOutBack, easeOutCubic, easeOutQuad, lerp } from "./easing";
 
 export const MUZZLE = MUZZLE_OFFSET; // pivot -> loaded bomb centre (board units)
-const BARREL_LEN = MUZZLE - 6; // the bomb sits half out of the muzzle collar
+const BARREL_LEN = MUZZLE - 6; // ends inside the muzzle cup the bomb sits in
 export const AIM_SKIP = 22; // aim path starts at the muzzle: dots start past the loaded bomb
 const LOADED = 0.85; // loaded bomb scale (board bomb = 1)
 const NEXT = 0.62; // next bomb scale in the socket
@@ -54,6 +54,7 @@ export class Cannon {
   private readonly muzzleMat: MeshBasicMaterial;
   private readonly outlineMat: MeshBasicMaterial;
   private angle = 90; // displayed barrel angle (deg)
+  private tintIndex = 0; // bomb colour the turret glow shows
   private omega = 0;
   private recoil = 0;
   private recoilT = 99;
@@ -112,10 +113,15 @@ export class Cannon {
       const r = 16 - (3 * y) / BARREL_LEN + 0.8;
       add(this.slide, new Mesh(new CylinderGeometry(r, r, 3.2, 28), basic(HEX.magenta)), 0, y, 0);
     }
-    // glowing muzzle collar (bomb colour) just below the seated bomb
+    // glowing muzzle cup (bomb colour): the loaded bomb sits ~25% inside it
+    // (cup y 34..48, bomb centre at MUZZLE = 52, radius 16)
     this.muzzleMat = basic(HEX.cyan);
-    this.muzzle = new Mesh(new CylinderGeometry(17.5, 16.5, 8, 32), this.muzzleMat);
-    add(this.slide, this.muzzle, 0, BARREL_LEN - 6, 0);
+    this.muzzle = new Mesh(new CylinderGeometry(19.5, 15, 14, 32, 1, true), this.muzzleMat);
+    this.muzzleMat.side = DoubleSide;
+    add(this.slide, this.muzzle, 0, MUZZLE - 11, 0);
+    const lip = new TorusGeometry(19.5, 1.8, 8, 32);
+    lip.rotateX(Math.PI / 2);
+    add(this.slide, new Mesh(lip, basic(HEX.white, 0.85)), 0, MUZZLE - 4, 0);
     this.barrelPivot.add(this.slide);
     this.group.add(this.barrelPivot);
 
@@ -125,9 +131,9 @@ export class Cannon {
 
     // NEXT socket on the left side, joined to the pedestal by a short arm
     this.socket.add(new Mesh(new TorusGeometry(15, 1.6, 8, 40), basic(HEX.panelBorder)));
-    const arm = new Mesh(new CylinderGeometry(2.2, 2.2, 22, 8), basic(HEX.panelBorder, 0.85));
+    const arm = new Mesh(new CylinderGeometry(2.2, 2.2, 36, 8), basic(HEX.panelBorder, 0.85));
     arm.rotation.z = Math.PI / 2;
-    add(this.socket, arm, 26, 0, -4);
+    add(this.socket, arm, 33, 0, -4); // ring edge -> pedestal side
     this.group.add(this.socket);
   }
 
@@ -142,7 +148,7 @@ export class Cannon {
   // starts exactly at the drawn muzzle.
   onShoot(angle?: number) {
     if (angle !== undefined) {
-      this.angle = Math.max(10, Math.min(170, angle));
+      this.angle = Math.max(AIM_MIN_ANGLE, Math.min(AIM_MAX_ANGLE, angle));
       this.omega = 0;
       this.barrelPivot.rotation.z = (this.angle - 90) * DEG;
     }
@@ -165,7 +171,7 @@ export class Cannon {
   update(dt: number, shooter: ShooterState, bomb: BombState, flashOn: boolean) {
     this.group.position.set(shooter.x, -shooter.y, 0);
     // Barrel spring toward the aim (stiffness 400, damping 30), clamped +-80
-    const target = Math.max(10, Math.min(170, shooter.angle));
+    const target = Math.max(AIM_MIN_ANGLE, Math.min(AIM_MAX_ANGLE, shooter.angle));
     const steps = Math.max(1, Math.ceil(dt / 0.008));
     const h = dt / steps;
     for (let i = 0; i < steps; i++) {
@@ -183,7 +189,11 @@ export class Cannon {
     this.dome.scale.y = 28 * squash;
 
     // Glow colour follows the loaded bomb (~150ms crossfade)
-    this.glowColor.lerp(colorAt(bombGlow, bomb.colorIndex), 1 - Math.exp(-dt * 20));
+    // collar / dome colour changes when the incoming bomb ARRIVES in the
+    // muzzle (end of the swap or reload slide), crossfading over ~150 ms
+    const arriving = this.swapT < 0.22 || (bomb.visible && !bomb.inFlight && this.reloadT < 0.16);
+    if (!arriving) this.tintIndex = bomb.colorIndex;
+    this.glowColor.lerp(colorAt(bombGlow, this.tintIndex), 1 - Math.exp(-dt * 20));
     this.muzzleMat.color.copy(this.glowColor);
     this.outlineMat.color.copy(this.glowColor);
     this.flashT += dt;
