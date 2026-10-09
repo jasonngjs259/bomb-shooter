@@ -295,6 +295,17 @@ async function fullscreenChecks() {
   for (const st of ["nav", "media-standalone", "media-fullscreen"] as const) {
     assert(!shouldOfferFullscreen(fullscreenEnv(make({ touch: true, api: "std", standalone: st }).w, true)), `standalone (${st}): hidden`);
   }
+  // API full screen + a Chrome build that also reports display-mode: fullscreen: NOT a home-screen app
+  {
+    const f = make({ touch: true, api: "std", standalone: "media-fullscreen" });
+    assert(!shouldOfferFullscreen(fullscreenEnv(f.w, true)), "display-mode fullscreen without fullscreenElement: home-screen app, hidden");
+    f.doc.fullscreenElement = f.doc.documentElement;
+    const env = fullscreenEnv(f.w, true);
+    assert(env.active && !env.standalone && shouldOfferFullscreen(env), "display-mode fullscreen + fullscreenElement: API full screen, exit button stays");
+    f.doc.fullscreenElement = null;
+    f.doc.webkitFullscreenElement = f.doc.documentElement;
+    assert(shouldOfferFullscreen(fullscreenEnv(f.w, true)) && fullscreenEnv(f.w, true).active, "same with webkitFullscreenElement");
+  }
   // modes
   assert(fullscreenMode(fullscreenEnv(make({ touch: true, api: "std" }).w, true)) === "api", "API -> api mode");
   assert(fullscreenMode(fullscreenEnv(make({ touch: true, api: "webkit" }).w, true)) === "api", "webkit API -> api mode");
@@ -316,9 +327,19 @@ async function fullscreenChecks() {
     f.fire("fullscreenchange");
     f.fire("webkitfullscreenchange");
     assert(changes === 2 && !fullscreenEnv(f.w, true).active, "fullscreenchange / webkitfullscreenchange tracked");
+    assert(!prefersFullscreen(f.w), "swipe / back out of full screen clears the remembered choice");
     off();
     f.fire("fullscreenchange");
     assert(changes === 2, "unsubscribed");
+    // entering again (change event with fullscreenElement set) keeps the choice; leaving clears it
+    const off2 = onFullscreenChange(f.w, () => undefined);
+    await enterFullscreen(f.w);
+    f.fire("fullscreenchange");
+    assert(prefersFullscreen(f.w), "change event while full screen keeps the choice");
+    f.doc.fullscreenElement = null;
+    f.fire("webkitfullscreenchange");
+    assert(!prefersFullscreen(f.w), "webkitfullscreenchange out clears it");
+    off2();
     await enterFullscreen(f.w);
     await exitFullscreen(f.w);
     assert(f.calls.includes("exit") && !fullscreenEnv(f.w, true).active && !prefersFullscreen(f.w), "exitFullscreen + choice cleared");

@@ -81,11 +81,16 @@ export function fullscreenEnv(w: FsWindow | undefined, web: boolean): Fullscreen
   const nav = w.navigator ?? {};
   const d = w.document;
   const ua = `${nav.userAgent ?? ""} ${nav.platform ?? ""}`;
+  // Fullscreen-API full screen wins: some Chrome builds also report
+  // display-mode: fullscreen then, which must not read as a home-screen app
+  // (that would hide the exit icon and the pause row).
+  const active = isFullscreenNow(d);
   return {
     web: true,
     touch: media(w, "(pointer: coarse)") || (nav.maxTouchPoints ?? 0) > 0,
-    standalone: nav.standalone === true || media(w, "(display-mode: standalone)") || media(w, "(display-mode: fullscreen)"),
-    active: isFullscreenNow(d),
+    standalone:
+      !active && (nav.standalone === true || media(w, "(display-mode: standalone)") || media(w, "(display-mode: fullscreen)")),
+    active,
     api: requestFn(d) !== null && d?.fullscreenEnabled !== false && d?.webkitFullscreenEnabled !== false,
     ios: /iPhone|iPod/.test(ua),
   };
@@ -162,15 +167,22 @@ export async function exitFullscreen(w: FsWindow | undefined): Promise<void> {
   }
 }
 
-// fullscreenchange / webkitfullscreenchange (the user can swipe out).
+// fullscreenchange / webkitfullscreenchange (the user can swipe out). Any
+// exit (system back / swipe, our exit button, Esc) clears the remembered
+// "prefers full screen" choice; a page unload fires no change event, so the
+// choice survives a reload and the title re-offers the button prominently.
 export function onFullscreenChange(w: FsWindow | undefined, cb: () => void): () => void {
   const d = w?.document;
   if (!d || typeof d.addEventListener !== "function") return () => undefined;
-  d.addEventListener("fullscreenchange", cb);
-  d.addEventListener("webkitfullscreenchange", cb);
+  const handler = () => {
+    if (!isFullscreenNow(d)) rememberPref(w, false);
+    cb();
+  };
+  d.addEventListener("fullscreenchange", handler);
+  d.addEventListener("webkitfullscreenchange", handler);
   return () => {
-    d.removeEventListener?.("fullscreenchange", cb);
-    d.removeEventListener?.("webkitfullscreenchange", cb);
+    d.removeEventListener?.("fullscreenchange", handler);
+    d.removeEventListener?.("webkitfullscreenchange", handler);
   };
 }
 

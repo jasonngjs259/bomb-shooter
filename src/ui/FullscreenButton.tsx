@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { uiSound } from "../audio";
 import {
   enterFullscreen, exitFullscreen, fullscreenEnv, fullscreenMode, FsWindow, GENERIC_HINT, IOS_HINT, onFullscreenChange,
@@ -101,9 +102,11 @@ export function FullscreenButton() {
 export function FullscreenHint() {
   const open = useSyncExternalStore(subscribeHint, () => hintOpen, () => false);
   const fs = useFullscreen();
+  const insets = useSafeAreaInsets();
   if (!open) return null;
   return (
-    <View style={[StyleSheet.absoluteFill, styles.backdrop]}>
+    // 16px + the home-indicator inset, so GOT IT never sits on it
+    <View style={[StyleSheet.absoluteFill, styles.backdrop, { paddingBottom: 16 + insets.bottom }]}>
       <Pressable accessibilityRole="button" accessibilityLabel="Close" style={StyleSheet.absoluteFill} onPress={() => setHint(false)} />
       <View style={styles.sheet} accessibilityRole="alert">
         <Text style={styles.sheetTitle}>FULL SCREEN</Text>
